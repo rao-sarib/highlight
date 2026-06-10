@@ -1,0 +1,266 @@
+"""
+OpenAI-backed LLM service for prompt optimization, embeddings, and content generation.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass, field
+from typing import Any
+
+from openai import AsyncOpenAI
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+CHAT_MODEL = "gpt-4o"
+EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_DIMENSION = 1536
+MAX_EMBEDDING_BATCH_SIZE = 128
+
+
+class LLMServiceError(RuntimeError):
+    """Raised when the LLM service cannot complete a request."""
+
+
+@dataclass(slots=True)
+class LLMService:
+    """Thin async wrapper around the OpenAI API."""
+
+    api_key: str = field(default_factory=lambda: settings.OPENAI_API_KEY.strip())
+    _client: AsyncOpenAI | None = field(default=None, init=False, repr=False)
+
+    def _get_client(self) -> AsyncOpenAI:
+        if not self.api_key:
+            raise LLMServiceError(
+                "OPENAI_API_KEY is not configured. Set it before calling AI features."
+            )
+        if self._client is None:
+            self._client = AsyncOpenAI(api_key=self.api_key)
+        return self._client
+
+    async def optimize_prompts(self, keyword: str) -> list[str]:
+        """Generate five GEO-friendly prompt variations for a base keyword."""
+
+        normalized_keyword = keyword.strip()
+        if not normalized_keyword:
+            raise ValueError("Keyword is required for prompt optimization.")
+
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=0.7,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a Generative Engine Optimization strategist. "
+                        "Return exactly 5 distinct prompts that a user might ask an AI search "
+                        "engine about the provided keyword. Return only valid JSON in the form "
+                        '{"prompts":["...","..."]}.'
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Keyword: {normalized_keyword}",
+                },
+            ],
+        )
+        raw_content = (response.choices[0].message.content or "").strip()
+        payload = self._safe_json_object(raw_content)
+        prompts = payload.get("prompts", [])
+        cleaned_prompts = [
+            str(prompt).strip()
+            for prompt in prompts
+            if isinstance(prompt, str) and prompt.strip()
+        ]
+        if len(cleaned_prompts) < 5:
+            raise LLMServiceError("OpenAI did not return the expected 5 prompts.")
+        return cleaned_prompts[:5]
+
+    async def generate_content(
+        self,
+        topic: str,
+        context_chunks: list[str],
+        content_type: str = "blog",
+    ) -> str:
+        """Generate SEO-oriented content using retrieved RAG context."""
+
+        normalized_topic = topic.strip()
+        if not normalized_topic:
+            raise ValueError("Topic is required for content generation.")
+
+        normalized_type = content_type.strip().lower() or "blog"
+        context_block = (
+            "\n\n".join(f"- {chunk.strip()}" for chunk in context_chunks if chunk.strip())
+            or "No additional project context was available."
+        )
+
+        content_guidance = {
+            "blog": (
+                "Write a polished blog post between 900 and 1200 words with a strong intro, "
+                "clear H2/H3 structure, and actionable guidance. Make it sound natural and "
+                "avoid keyword stuffing."
+            ),
+            "faq": (
+                "Write 8 to 10 FAQ entries. Each answer should be concise but useful, usually "
+                "2 to 4 sentences. Format the output with clear question headings."
+            ),
+            "meta": (
+                "Write an SEO title and meta description. Return exactly two lines in this "
+                "format: 'Title: ...' and 'Description: ...'. Keep the title under 60 "
+                "characters and the description under 155 characters."
+            ),
+        }
+
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=0.55,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert SEO content strategist. Use the provided project "
+                        "context to create original, factual, high-quality content.\n\n"
+                        f"Context: {context_block}\n\n"
+                        f"Instruction: {content_guidance.get(normalized_type, content_guidance['blog'])}"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Topic: {normalized_topic}",
+                },
+            ],
+        )
+        return (response.choices[0].message.content or "").strip()
+
+    async def generate_embeddings(self, texts: list[str]) -> list[list[float]]:
+        """Generate embedding vectors for a list of text chunks."""
+
+        cleaned_texts = [text.strip() for text in texts if text and text.strip()]
+        if not cleaned_texts:
+            return []
+
+        client = self._get_client()
+        embeddings: list[list[float]] = []
+        for index in range(0, len(cleaned_texts), MAX_EMBEDDING_BATCH_SIZE):
+            batch = cleaned_texts[index : index + MAX_EMBEDDING_BATCH_SIZE]
+            response = await client.embeddings.create(
+                model=EMBEDDING_MODEL,
+                input=batch,
+            )
+            embeddings.extend(list(item.embedding) for item in response.data)
+        return embeddings
+
+    async def generate_seo_fixes(
+        self,
+        issues: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        """Turn SEO issues into ready-to-apply recommendations."""
+
+        if not issues:
+            return []
+
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=0.35,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a senior technical SEO consultant. For each issue, provide a "
+                        "specific fix. Return only valid JSON in the form "
+                        '{"fixes":[{"issue_type":"...","ai_suggestion":"..."}]}.'
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps({"issues": issues}, ensure_ascii=True),
+                },
+            ],
+        )
+        raw_content = (response.choices[0].message.content or "").strip()
+        payload = self._safe_json_object(raw_content)
+        fixes = payload.get("fixes", [])
+        indexed_fixes: dict[str, str] = {}
+        for fix in fixes:
+            if not isinstance(fix, dict):
+                continue
+            issue_type = str(fix.get("issue_type", "")).strip()
+            suggestion = str(fix.get("ai_suggestion", "")).strip()
+            if issue_type and suggestion:
+                indexed_fixes[issue_type] = suggestion
+
+        enriched_issues: list[dict[str, str]] = []
+        for issue in issues:
+            issue_type = str(issue.get("issue_type", "")).strip()
+            enriched_issues.append(
+                {
+                    **issue,
+                    "ai_suggestion": indexed_fixes.get(
+                        issue_type,
+                        "No AI suggestion was generated for this issue.",
+                    ),
+                }
+            )
+        return enriched_issues
+
+    async def generate_custom_text(
+        self,
+        system_instruction: str,
+        user_prompt: str,
+        temperature: float = 0.4,
+    ) -> str:
+        """Generate free-form text for workflows that need custom prompting."""
+
+        normalized_system_instruction = system_instruction.strip()
+        normalized_user_prompt = user_prompt.strip()
+        if not normalized_system_instruction or not normalized_user_prompt:
+            raise ValueError("Both system_instruction and user_prompt are required.")
+
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=temperature,
+            messages=[
+                {"role": "system", "content": normalized_system_instruction},
+                {"role": "user", "content": normalized_user_prompt},
+            ],
+        )
+        return (response.choices[0].message.content or "").strip()
+
+    @staticmethod
+    def _safe_json_object(raw_content: str) -> dict[str, Any]:
+        """Best-effort JSON parser for chat responses."""
+
+        if not raw_content:
+            raise LLMServiceError("OpenAI returned an empty response.")
+
+        try:
+            parsed = json.loads(raw_content)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        start = raw_content.find("{")
+        end = raw_content.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise LLMServiceError("OpenAI response was not valid JSON.")
+
+        try:
+            parsed = json.loads(raw_content[start : end + 1])
+        except json.JSONDecodeError as exc:
+            logger.error("Failed to decode OpenAI JSON payload: %s", raw_content)
+            raise LLMServiceError("OpenAI response could not be parsed as JSON.") from exc
+
+        if not isinstance(parsed, dict):
+            raise LLMServiceError("OpenAI response JSON must be an object.")
+        return parsed
+
+
+llm_service = LLMService()

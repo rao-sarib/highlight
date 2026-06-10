@@ -1,0 +1,39 @@
+# ── Core Framework ────────────────────────────────────────
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic[email]==2.10.4
+pydantic-settings==2.7.1
+
+# ── Database / ORM ────────────────────────────────────────
+sqlmodel==0.0.22
+psycopg2-binary==2.9.10
+pgvector==0.3.6
+
+# ── Auth ──────────────────────────────────────────────────
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+bcrypt==4.0.1
+
+# ── HTTP / Async ──────────────────────────────────────────
+httpx==0.28.1
+
+# ── AI (needed later but pinned now) ─────────────────────
+openai==1.58.1
+langchain==0.3.14
+langchain-openai==0.3.0
+
+# ── Redis (needed later) ─────────────────────────────────
+redis==5.2.1
+
+# ── Background Tasks (Temporal) ───────────────────────────
+temporalio==1.9.0
+
+# ── Scraping / HTML Parsing ───────────────────────────────
+beautifulsoup4==4.12.3
+lxml==5.3.0
+
+# ── Utilities ─────────────────────────────────────────────
+python-dotenv==1.0.1
+
+# ── Google Analytics 4 Data API — real GA4 metrics (UC-012) ──
+google-analytics-data==0.23.0

@@ -1,0 +1,120 @@
+services:
+  db:
+    image: ankane/pgvector:latest
+    container_name: highlight_db
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: highlight_seo
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
+    container_name: highlight_redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    container_name: highlight_temporal
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: admin
+      POSTGRES_PWD: password
+      POSTGRES_SEEDS: db
+      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/config/dynamicconfig/docker.yaml
+    ports:
+      - "7233:7233"
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    container_name: highlight_temporal_ui
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_UI_PORT: 8088
+    ports:
+      - "8088:8088"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: highlight_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql://admin:password@db:5432/highlight_seo
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: super-secret-change-me-in-production
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      TEMPORAL_SERVER_URL: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_TASK_QUEUE: highlight-seo-task-queue
+    depends_on:
+      - db
+      - redis
+      - temporal
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: highlight_worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.temporal.worker"]
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql://admin:password@db:5432/highlight_seo
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: super-secret-change-me-in-production
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      TEMPORAL_SERVER_URL: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_TASK_QUEUE: highlight-seo-task-queue
+    depends_on:
+      - db
+      - redis
+      - temporal
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: highlight_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000/api/v1
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

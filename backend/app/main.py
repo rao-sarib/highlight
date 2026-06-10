@@ -40,16 +40,24 @@ from app.api.v1.visibility import router as visibility_router
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Run one-time setup on startup, then yield control to the app."""
-    # Enable pgvector extension (no-op if it already exists)
+    # Enable pgvector extension (no-op if it already exists). Must run before
+    # create_all() since the embeddings table has a vector-typed column.
     with engine.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        # Lightweight column migration for fields added after the initial
-        # create_all (create_all only creates missing tables, not columns).
+
+    # Create all tables that don't exist yet (covers a fresh database — every
+    # table is created with the current model definitions, including columns
+    # added after the initial release).
+    SQLModel.metadata.create_all(engine)
+
+    # Lightweight column migration for fields added after the initial
+    # create_all on databases that already had the projects table (create_all
+    # only creates missing tables, not columns on existing tables). This is a
+    # no-op on a fresh database since create_all already added the column.
+    with engine.begin() as conn:
         conn.execute(
             text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS ga4_property_id VARCHAR(32)")
         )
-    # Create all tables that don't exist yet
-    SQLModel.metadata.create_all(engine)
     yield
 
 

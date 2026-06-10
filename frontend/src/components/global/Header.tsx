@@ -2,8 +2,9 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, FolderKanban } from "lucide-react";
 
+import ThemeToggle from "@/components/global/ThemeToggle";
 import { useAuthStore } from "@/store/authStore";
 import { useProjectStore } from "@/store/projectStore";
 
@@ -41,23 +42,21 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-20 border-b border-border/70 bg-background/95 backdrop-blur">
-      <div className="flex flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-muted-foreground">
-            Highlight Shell
-          </p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-            Navigate audits, content, and AI search workflows
-          </h2>
-        </div>
-
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <div className="relative min-w-[240px]">
+    <header className="sticky top-0 z-20 border-b border-border/60 bg-background/70 backdrop-blur-xl">
+      <div className="flex items-center justify-between gap-4 px-5 py-3.5 md:px-8">
+        {/* Active project selector */}
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="hidden h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary sm:flex">
+            <FolderKanban className="h-4 w-4" />
+          </div>
+          <div className="relative min-w-[180px] max-w-[280px]">
+            <label className="pointer-events-none absolute -top-2 left-3 hidden bg-background px-1 text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground md:block">
+              Active project
+            </label>
             <select
               value={activeProjectId ?? ""}
               onChange={(event) => handleProjectChange(event.target.value)}
-              className="h-12 w-full appearance-none rounded-xl border border-border bg-card px-4 pr-10 text-sm font-medium text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
+              className="h-11 w-full appearance-none rounded-xl border border-border bg-card px-3.5 pr-9 text-sm font-medium text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30"
             >
               {projects.length === 0 ? (
                 <option value="">No active project</option>
@@ -70,16 +69,21 @@ export default function Header() {
             </select>
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           </div>
+        </div>
 
-          <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/12 text-sm font-semibold text-primary">
+        {/* Right: theme + user */}
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+
+          <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-card/80 py-1.5 pl-1.5 pr-3.5 backdrop-blur">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-gradient text-xs font-semibold text-white">
               {user?.full_name?.slice(0, 2).toUpperCase() ?? "U"}
             </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-foreground">
-                {user?.full_name ?? "Loading user"}
+            <div className="hidden min-w-0 sm:block">
+              <p className="truncate text-sm font-semibold leading-tight text-foreground">
+                {user?.full_name ?? "Loading…"}
               </p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="truncate text-xs leading-tight text-muted-foreground">
                 {user?.email ?? "Authenticated session"}
               </p>
             </div>

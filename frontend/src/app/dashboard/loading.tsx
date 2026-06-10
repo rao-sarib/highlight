@@ -1,7 +1,7 @@
 export default function DashboardLoading() {
   return (
-    <div className="space-y-6">
-      <section className="rounded-[2rem] border border-border/60 bg-card px-6 py-8 shadow-glow md:px-8">
+    <div className="animate-pulse space-y-6">
+      <section className="rounded-3xl border border-border/60 bg-card/80 px-6 py-9 shadow-soft md:px-9">
         <div className="h-4 w-28 rounded-full bg-muted" />
         <div className="mt-5 h-10 max-w-md rounded-2xl bg-muted" />
         <div className="mt-4 h-5 max-w-2xl rounded-2xl bg-muted" />
@@ -11,7 +11,7 @@ export default function DashboardLoading() {
         {Array.from({ length: 6 }).map((_, index) => (
           <div
             key={index}
-            className="rounded-[1.5rem] border border-border/70 bg-card p-6"
+            className="rounded-3xl border border-border/60 bg-card/80 p-6 shadow-soft"
           >
             <div className="h-12 w-12 rounded-2xl bg-muted" />
             <div className="mt-5 h-6 w-2/3 rounded-2xl bg-muted" />

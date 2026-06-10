@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ArrowRight, Bot, CheckCircle2 } from "lucide-react";
 
 import { useAuthStore } from "@/store/authStore";
 
@@ -63,22 +64,20 @@ export default function SignupPage() {
   };
 
   return (
-    <main
-      className="min-h-screen bg-background px-4 py-10 text-foreground sm:px-6"
-      style={{
-        backgroundImage:
-          "radial-gradient(circle at top left, hsl(var(--primary) / 0.18), transparent 30%), radial-gradient(circle at bottom, hsl(var(--accent) / 0.14), transparent 34%)",
-      }}
-    >
-      <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-8 lg:grid-cols-[0.95fr_1.05fr]">
-        <section className="rounded-[2rem] border border-border/60 bg-card/90 p-6 shadow-2xl backdrop-blur sm:p-8">
+    <main className="relative min-h-screen overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
+      <div aria-hidden="true" className="absolute inset-0 bg-aurora" />
+      <div aria-hidden="true" className="absolute inset-0 bg-dots opacity-30" />
+
+      <div className="relative mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-8 lg:grid-cols-[0.95fr_1.05fr]">
+        <section className="rounded-[2rem] border border-border/60 bg-card/80 p-6 shadow-soft backdrop-blur-xl sm:p-8">
           <div className="mx-auto max-w-md space-y-8">
             <div className="space-y-3">
-              <p className="text-sm font-medium uppercase tracking-[0.28em] text-muted-foreground">
+              <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/60 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                <span className="h-1.5 w-1.5 rounded-full bg-brand-gradient" />
                 Create account
-              </p>
+              </span>
               <div>
-                <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+                <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">
                   Start your Highlight workspace
                 </h1>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -164,36 +163,41 @@ export default function SignupPage() {
               <button
                 type="submit"
                 disabled={isDisabled}
-                className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-brand inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               >
                 {isSubmitting ? "Creating account..." : "Create account"}
+                {!isSubmitting ? <ArrowRight className="h-4 w-4" /> : null}
               </button>
             </form>
 
-            <div className="rounded-2xl border border-border/60 bg-background/70 p-4 text-sm text-muted-foreground">
+            <div className="rounded-2xl border border-border/60 bg-muted/40 p-4 text-sm text-muted-foreground">
               Already have an account?{" "}
-              <Link className="font-semibold text-foreground underline-offset-4 hover:underline" href="/login">
+              <Link className="font-semibold text-primary underline-offset-4 hover:underline" href="/login">
                 Sign in instead
               </Link>
             </div>
           </div>
         </section>
 
-        <section className="hidden rounded-[2rem] border border-border/60 bg-card/70 p-10 shadow-2xl backdrop-blur lg:block">
-          <div className="max-w-lg space-y-8">
-            <div className="inline-flex items-center rounded-full border border-border/70 bg-background/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-              Built for SEO teams
+        <section className="relative hidden overflow-hidden rounded-[2rem] border border-border/60 bg-brand-gradient p-10 text-white shadow-glow lg:block">
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-dots opacity-20" />
+          <div className="relative max-w-lg space-y-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-inset ring-white/25">
+                <Bot className="h-5 w-5" />
+              </div>
+              <p className="font-display text-lg font-semibold tracking-tight">Built for SEO teams</p>
             </div>
             <div className="space-y-4">
-              <h2 className="max-w-md text-5xl font-semibold tracking-tight text-foreground">
+              <h2 className="max-w-md font-display text-5xl font-semibold tracking-tight">
                 Bring audits, prompts, content, and fixes into one flow.
               </h2>
-              <p className="max-w-xl text-lg leading-8 text-muted-foreground">
+              <p className="max-w-xl text-lg leading-8 text-white/85">
                 Launch faster with a workspace designed around AI visibility, semantic
                 content planning, and repeatable SEO execution.
               </p>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-3">
               {[
                 "Secure JWT-based access and project ownership",
                 "FastAPI + Temporal backend for long-running AI workflows",
@@ -201,8 +205,9 @@ export default function SignupPage() {
               ].map((item) => (
                 <div
                   key={item}
-                  className="rounded-2xl border border-border/60 bg-background/80 px-5 py-4 text-sm leading-6 text-muted-foreground"
+                  className="flex items-start gap-2.5 rounded-2xl bg-white/10 px-5 py-4 text-sm leading-6 text-white/90 ring-1 ring-inset ring-white/15"
                 >
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-white" />
                   {item}
                 </div>
               ))}

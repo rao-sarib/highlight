@@ -51,7 +51,7 @@ export default function NewProjectPage() {
       title="Create a new project"
       description="Add the site you want to audit and optimize. This becomes the home for embeddings, generated content, audits, and feature workflows."
     >
-      <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
+      <section className="max-w-2xl rounded-3xl border border-border/60 bg-card/80 p-6 shadow-soft backdrop-blur md:p-8">
         <form className="space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground" htmlFor="project-name">
@@ -91,7 +91,7 @@ export default function NewProjectPage() {
           <button
             type="submit"
             disabled={isSubmitting || !name.trim() || !url.trim()}
-            className="inline-flex h-12 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-brand inline-flex h-12 items-center justify-center rounded-xl px-5 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
           >
             {isSubmitting ? "Creating project..." : "Create project"}
           </button>

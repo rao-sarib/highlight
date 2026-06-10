@@ -550,7 +550,7 @@ export default function ProjectAnalyticsPage() {
                         type="monotone"
                         dataKey="active_users"
                         name="Active users"
-                        stroke="#22c55e"
+                        stroke="hsl(var(--accent))"
                         strokeWidth={2}
                         dot={false}
                       />

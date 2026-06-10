@@ -23,6 +23,7 @@ An AI-powered SEO automation platform that optimises websites for both tradition
 11. [How Each Feature Works](#11-how-each-feature-works)
 12. [GEO Implementation Status](#12-geo-implementation-status)
 13. [Troubleshooting](#13-troubleshooting)
+14. [Setup After Cloning From GitHub](#14-setup-after-cloning-from-github)
 
 ---
 
@@ -89,8 +90,11 @@ Copy `.env.example` to `.env` and fill in these values:
 | `OPENAI_API_KEY` | Prompts, content, embeddings, fixes, backlinks | https://platform.openai.com/api-keys | $5 credit on signup |
 | `SERPER_API_KEY` | Real Google SERP rankings in Competitor Benchmarking | https://serper.dev | 2,500 queries/month |
 | `PERPLEXITY_API_KEY` | Citation-based AI Visibility score | https://www.perplexity.ai/settings/api | Pay-as-you-go |
+| `GA4_SERVICE_ACCOUNT_FILE` | Real Google Analytics 4 traffic charts on the Analytics page | Google Cloud Console (free) | Free |
 
 > **Without Serper/Perplexity keys:** The features still work using fallback methods (web scraping for competitors, OpenAI cosine similarity for visibility). The app does not break.
+>
+> **Without GA4 setup:** The Analytics page still shows real content/embedding metrics from our own database — it just skips the GA4 traffic section. See [section 14](#14-setup-after-cloning-from-github) for the GA4 setup procedure.
 
 ---
 
@@ -256,6 +260,7 @@ Frontend runs at **http://localhost:3000**
 | `TEMPORAL_SERVER_URL` | `localhost:7233` | Temporal gRPC address (use `temporal:7233` inside Docker) |
 | `TEMPORAL_NAMESPACE` | `default` | Temporal namespace |
 | `TEMPORAL_TASK_QUEUE` | `highlight-seo-task-queue` | Temporal task queue name |
+| `GA4_SERVICE_ACCOUNT_FILE` | _(empty)_ | Filename of a Google service-account JSON key placed in `backend/`. Optional — enables real GA4 traffic data. See [section 14](#14-setup-after-cloning-from-github). |
 
 ### `frontend/.env.local`
 
@@ -504,6 +509,81 @@ And update `DATABASE_URL` in `backend/.env` accordingly.
 
 ### Perplexity API returns no citations
 Some queries don't trigger citations. This is normal — the score falls back to cosine similarity in that case.
+
+---
+
+## 14. Setup After Cloning From GitHub
+
+This repo's `.gitignore` excludes secrets, dependencies, and build output, so a
+fresh clone is **source-only**. Follow these steps to get it running.
+
+### 14.1 Files you must create (none of these are in the repo)
+
+| File | Required? | Purpose |
+|---|---|---|
+| `backend/.env` | **Yes** | Backend secrets — DB, JWT, OpenAI, etc. |
+| `frontend/.env.local` | **Yes** | Tells the frontend where the backend API is |
+| `.env` (repo root) | Only if using `docker-compose` | Same keys as `backend/.env`, used by Compose |
+| `backend/<your-ga4-key>.json` | No (optional) | Google service-account key — only for real GA4 charts |
+
+For each, copy the reference template and fill in real values:
+
+```bash
+cp .env.example backend/.env
+cp .env.example .env                 # only if you use docker-compose
+```
+
+For `frontend/.env.local`, create it manually with:
+```env
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api/v1
+```
+
+### 14.2 Required keys (app won't start / core features break without these)
+
+| Variable | Where | Notes |
+|---|---|---|
+| `DATABASE_URL` | `backend/.env` | Default works if you run `docker compose up db -d` |
+| `SECRET_KEY` | `backend/.env` | Any random string — used to sign JWTs |
+| `OPENAI_API_KEY` | `backend/.env` | **Get your own key** at https://platform.openai.com/api-keys. Required for Prompt Optimisation, Content Generation, SEO Fixes, Backlinks, embeddings, and AI Visibility fallback. |
+
+### 14.3 Optional keys (app runs fine without these — fallbacks kick in)
+
+| Variable | Where | What you lose without it |
+|---|---|---|
+| `SERPER_API_KEY` | `backend/.env` | Competitor Benchmarking falls back to scraping + keyword density (no real SERP ranks) |
+| `PERPLEXITY_API_KEY` | `backend/.env` | AI Visibility falls back to OpenAI cosine-similarity scoring |
+| `GA4_SERVICE_ACCOUNT_FILE` | `backend/.env` | Analytics page skips the GA4 traffic section but still shows real content/embedding metrics from the database |
+
+### 14.4 Optional: enabling real Google Analytics 4 data
+
+This is entirely optional and skippable — the Analytics page works without it.
+
+**One-time, server-side (you, the developer/operator):**
+1. In [Google Cloud Console](https://console.cloud.google.com/), create (or pick) a project.
+2. Enable the **Google Analytics Data API** for that project.
+3. Create a **Service Account**, then create a JSON key for it and download it.
+4. Save that JSON file inside `backend/` (e.g. `backend/ga4-service-account.json`) — it's gitignored, so it stays local/private.
+5. In `backend/.env`, set:
+   ```env
+   GA4_SERVICE_ACCOUNT_FILE=ga4-service-account.json
+   ```
+6. Restart the backend.
+
+**Per-website, done by each end user (no developer involvement needed):**
+1. Open the project's **Analytics** page in the app.
+2. If GA4 is configured server-side, a guide appears with the service account's email address.
+3. In Google Analytics, go to **Admin → Property Access Management** for that website's GA4 property, add the service account email as a **Viewer**.
+4. In Google Analytics, go to **Admin → Property Settings** and copy the numeric **Property ID**.
+5. Paste that ID into the **GA4 Property ID** field on the Analytics page and click **Save**.
+
+If a user skips all of this, the Analytics page simply shows the existing
+content metrics (total content pieces, indexed chunks, content-by-type, and
+the weekly content-generation chart) — nothing breaks.
+
+### 14.5 Then start the app
+
+Follow [section 5 (Docker)](#5-quick-start--full-stack-via-docker) or
+[section 6 (local dev)](#6-local-development-setup-no-docker) as normal.
 
 ---
 

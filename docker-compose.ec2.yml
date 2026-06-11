@@ -1,0 +1,116 @@
+# ─────────────────────────────────────────────────────────────────────────
+# EC2 (BACKEND-ONLY) compose — for the split architecture:
+#
+#   Frontend (Next.js)  -> Netlify (free, separate deploy)
+#   Backend + Worker +
+#   Postgres/pgvector +
+#   Redis + Temporal    -> THIS server (EC2)
+#
+# Differences from docker-compose.prod.yml:
+#   • No "frontend" or "caddy" services — Netlify hosts the frontend.
+#   • Backend is exposed directly on port 8000 (Netlify's netlify.toml
+#     proxies /api/* requests here).
+#   • Temporal UI is exposed on 8088 for optional debugging
+#     (open port 8088 in your security group only if you want to view it).
+#
+# Run it with:
+#   docker compose -f docker-compose.ec2.yml up -d --build
+# ─────────────────────────────────────────────────────────────────────────
+services:
+  db:
+    image: ankane/pgvector:latest
+    container_name: highlight_db
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: highlight_seo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
+    container_name: highlight_redis
+    restart: always
+
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    container_name: highlight_temporal
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: admin
+      POSTGRES_PWD: password
+      POSTGRES_SEEDS: db
+      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/config/dynamicconfig/docker.yaml
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    container_name: highlight_temporal_ui
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_UI_PORT: 8088
+    ports:
+      - "8088:8088"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: highlight_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql://admin:password@db:5432/highlight_seo
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-super-secret-change-me-in-production}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      TEMPORAL_SERVER_URL: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_TASK_QUEUE: highlight-seo-task-queue
+    depends_on:
+      - db
+      - redis
+      - temporal
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: highlight_worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.temporal.worker"]
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql://admin:password@db:5432/highlight_seo
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-super-secret-change-me-in-production}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      TEMPORAL_SERVER_URL: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_TASK_QUEUE: highlight-seo-task-queue
+    depends_on:
+      - db
+      - redis
+      - temporal
+
+volumes:
+  pgdata:

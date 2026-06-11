@@ -1,0 +1,26 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Netlify config for the frontend (split architecture).
+#
+# Builds the Next.js app from frontend/ and proxies all /api/* requests to
+# the FastAPI backend running on EC2 — so the browser only ever talks to
+# your Netlify domain (no CORS, no mixed-content, no IP in frontend code).
+#
+# Backend Elastic IP: 15.207.143.143 (EC2, ap-south-1)
+# ─────────────────────────────────────────────────────────────────────────
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NEXT_PUBLIC_API_BASE_URL = "/api/v1"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[[redirects]]
+  from = "/api/*"
+  to = "http://15.207.143.143:8000/api/:splat"
+  status = 200
+  force = true

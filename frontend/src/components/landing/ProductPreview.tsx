@@ -1,5 +1,7 @@
 import { ArrowUpRight, Gauge, Search, Sparkles, TrendingUp } from "lucide-react";
 
+import { Logo } from "@/components/global/Logo";
+
 const bars = [38, 54, 47, 68, 60, 82, 74, 92];
 
 const navDots = [
@@ -41,9 +43,7 @@ export default function ProductPreview() {
           <div className="flex">
             {/* Mini sidebar */}
             <div className="hidden w-14 shrink-0 flex-col items-center gap-4 border-r border-border/60 bg-muted/20 py-5 sm:flex">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-gradient text-white shadow-glow">
-                <Sparkles className="h-4 w-4" />
-              </div>
+              <Logo className="h-8 w-8 shadow-glow" />
               <div className="mt-1 flex flex-col items-center gap-3">
                 {navDots.map((d, i) => (
                   <span

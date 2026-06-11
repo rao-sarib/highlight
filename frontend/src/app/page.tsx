@@ -16,6 +16,7 @@ import {
 import Counter from "@/components/landing/Counter";
 import ProductPreview from "@/components/landing/ProductPreview";
 import Reveal from "@/components/landing/Reveal";
+import { Logo } from "@/components/global/Logo";
 
 const featureCards = [
   {
@@ -117,10 +118,7 @@ export default function HomePage() {
         {/* ── Nav ────────────────────────────────────────────── */}
         <header className="sticky top-4 z-50 mt-4 flex items-center justify-between gap-4 rounded-2xl border border-border/60 bg-card/70 px-4 py-3 shadow-soft backdrop-blur-xl sm:px-5">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-brand-gradient text-white shadow-glow">
-              <Sparkles className="h-5 w-5" />
-              <span className="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/25" />
-            </div>
+            <Logo className="h-9 w-9 shadow-glow" />
             <div className="leading-tight">
               <p className="font-display text-base font-semibold tracking-tight">Highlight</p>
               <p className="-mt-0.5 text-[0.6rem] font-medium uppercase tracking-[0.2em] text-muted-foreground">
@@ -459,9 +457,7 @@ export default function HomePage() {
         {/* ── Footer ─────────────────────────────────────────── */}
         <footer className="flex flex-col gap-3 border-t border-border/60 py-8 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-gradient text-white">
-              <Sparkles className="h-4 w-4" />
-            </div>
+            <Logo className="h-8 w-8" />
             <div>
               <p className="font-semibold text-foreground">Highlight — AI SEO Tool</p>
               <p className="text-xs">Bridging SEO and Generative Engine Optimization.</p>

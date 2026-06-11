@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { Logo } from "@/components/global/Logo";
 import { useAuthStore } from "@/store/authStore";
 import { useProjectStore } from "@/store/projectStore";
 
@@ -104,10 +105,7 @@ export default function Sidebar() {
       {/* Brand */}
       <div className="shrink-0 px-5 pb-5 pt-6">
         <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-gradient text-white shadow-glow">
-            <Sparkles className="h-5 w-5" />
-            <span className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/20" />
-          </div>
+          <Logo className="h-11 w-11 shadow-glow" />
           <div className="leading-tight">
             <p className="font-display text-lg font-semibold tracking-tight text-foreground">
               Highlight

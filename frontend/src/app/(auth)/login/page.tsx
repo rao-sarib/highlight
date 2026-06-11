@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bot, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
 
+import { LogoGlyph } from "@/components/global/Logo";
 import { useAuthStore } from "@/store/authStore";
 
 export default function LoginPage() {
@@ -58,8 +59,8 @@ export default function LoginPage() {
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-dots opacity-20" />
           <div className="relative max-w-lg space-y-8">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-inset ring-white/25">
-                <Bot className="h-5 w-5" />
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 text-white ring-1 ring-inset ring-white/25">
+                <LogoGlyph className="h-6 w-6" />
               </div>
               <p className="font-display text-lg font-semibold tracking-tight">Highlight</p>
             </div>

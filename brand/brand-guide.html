@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Highlight — Brand Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{--violet:#6F55EE;--cyan:#1BC8E8;--ink:#0B1220;--muted:#6A7180;--bg:#F7F8FC;--card:#FFFFFF;--border:#E5E8F0;--dark:#0B0D14;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1040px;margin:0 auto;padding:56px 28px 80px;}
+  h1,h2,h3{font-family:'Sora',sans-serif;letter-spacing:-0.02em;}
+  .grad-text{background:linear-gradient(120deg,var(--violet),var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .masthead{display:flex;align-items:center;gap:18px;margin-bottom:8px;}
+  .masthead .name{font-family:'Sora';font-weight:800;font-size:40px;letter-spacing:-0.03em;}
+  .sub{color:var(--muted);font-size:17px;margin-bottom:44px;}
+  .section-label{font-size:12px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:var(--violet);margin:48px 0 16px;}
+  .section-label:first-of-type{margin-top:8px;}
+  .grid{display:grid;gap:18px;}
+  .cards-3{grid-template-columns:repeat(3,1fr);}.cards-2{grid-template-columns:repeat(2,1fr);}
+  @media(max-width:760px){.cards-3,.cards-2{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:26px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:150px;}
+  .card.dark{background:var(--dark);border-color:#1b2030;}
+  .card .cap{font-size:12.5px;color:var(--muted);font-weight:500;margin-top:4px;text-align:center;}
+  .card.dark .cap{color:#8a92a6;}
+  .lockup{display:flex;align-items:center;gap:12px;}
+  .lockup .wm{font-family:'Sora';font-weight:700;font-size:26px;letter-spacing:-0.02em;}
+  .sizes{display:flex;align-items:flex-end;gap:20px;}
+  .swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  @media(max-width:760px){.swatches{grid-template-columns:repeat(2,1fr);}}
+  .swatch{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:var(--card);}
+  .swatch .chip{height:92px;}.swatch .meta{padding:12px 14px;}
+  .swatch .nm{font-weight:600;font-size:14px;}.swatch .val{color:var(--muted);font-size:12.5px;margin-top:2px;}
+  .type-card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:28px 30px;}
+  .type-row{padding:14px 0;border-bottom:1px dashed var(--border);}.type-row:last-child{border-bottom:0;}
+  .type-meta{font-size:12px;color:var(--muted);margin-bottom:6px;}
+  .display-xl{font-family:'Sora';font-weight:800;font-size:46px;letter-spacing:-0.03em;}
+  .display-lg{font-family:'Sora';font-weight:700;font-size:30px;letter-spacing:-0.02em;}
+  .body-lg{font-weight:400;font-size:18px;}.body{font-weight:400;font-size:15px;color:#2a3142;}
+  .do-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}@media(max-width:760px){.do-grid{grid-template-columns:1fr;}}
+  .note{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 20px;}
+  .note h4{font-family:'Sora';font-size:14px;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+  .note ul{margin:0;padding-left:18px;color:#2a3142;font-size:14px;}.note li{margin:5px 0;}
+  .ok{color:#1f9d63;}.no{color:#d6455d;}
+  .foot{margin-top:56px;color:var(--muted);font-size:13px;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Masthead -->
+  <div class="masthead">
+    <svg width="58" height="58" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="Highlight icon">
+      <defs>
+        <linearGradient id="m-grad" x1="8" y1="46" x2="52" y2="14" gradientUnits="userSpaceOnUse"><stop stop-color="#6F55EE"/><stop offset="1" stop-color="#1BC8E8"/></linearGradient>
+        <linearGradient id="m-tile" x1="32" y1="2" x2="32" y2="62" gradientUnits="userSpaceOnUse"><stop stop-color="#161722"/><stop offset="1" stop-color="#0A0B11"/></linearGradient>
+      </defs>
+      <rect x="3" y="3" width="58" height="58" rx="18" fill="url(#m-tile)"/>
+      <rect x="3.5" y="3.5" width="57" height="57" rx="17.5" fill="none" stroke="#fff" stroke-opacity="0.1"/>
+      <g transform="translate(32 32) scale(0.8) translate(-29.6 -30.3)">
+        <rect x="13" y="36" width="8" height="15" rx="3" fill="#fff" opacity="0.55"/><rect x="26" y="28" width="8" height="23" rx="3" fill="#fff" opacity="0.78"/><rect x="39" y="19" width="8" height="32" rx="3" fill="#fff"/>
+        <rect x="7" y="14" width="52" height="12" rx="6" fill="url(#m-grad)" opacity="0.88" transform="rotate(-22 32 26)"/>
+        <circle cx="48" cy="14" r="4.3" fill="url(#m-grad)"/><circle cx="48" cy="14" r="1.7" fill="#fff"/>
+      </g>
+    </svg>
+    <div class="name">Highlight</div>
+  </div>
+  <p class="sub">Brand Guide — AI SEO &amp; GEO Platform · Final Year Project</p>
+
+  <!-- Logo -->
+  <div class="section-label">Logo — "Highlighted Growth"</div>
+  <div class="grid cards-3">
+    <div class="card dark">
+      <svg width="92" height="92" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="i-grad" x1="8" y1="46" x2="52" y2="14" gradientUnits="userSpaceOnUse"><stop stop-color="#6F55EE"/><stop offset="1" stop-color="#1BC8E8"/></linearGradient>
+          <linearGradient id="i-tile" x1="32" y1="2" x2="32" y2="62" gradientUnits="userSpaceOnUse"><stop stop-color="#161722"/><stop offset="1" stop-color="#0A0B11"/></linearGradient>
+        </defs>
+        <rect x="3" y="3" width="58" height="58" rx="18" fill="url(#i-tile)"/>
+        <rect x="3.5" y="3.5" width="57" height="57" rx="17.5" fill="none" stroke="#fff" stroke-opacity="0.1"/>
+        <g transform="translate(32 32) scale(0.8) translate(-29.6 -30.3)">
+          <rect x="13" y="36" width="8" height="15" rx="3" fill="#fff" opacity="0.55"/><rect x="26" y="28" width="8" height="23" rx="3" fill="#fff" opacity="0.78"/><rect x="39" y="19" width="8" height="32" rx="3" fill="#fff"/>
+          <rect x="7" y="14" width="52" height="12" rx="6" fill="url(#i-grad)" opacity="0.88" transform="rotate(-22 32 26)"/>
+          <circle cx="48" cy="14" r="4.3" fill="url(#i-grad)"/><circle cx="48" cy="14" r="1.7" fill="#fff"/>
+        </g>
+      </svg>
+      <div class="cap">App icon — primary</div>
+    </div>
+
+    <div class="card" style="grid-column:span 2;">
+      <div class="lockup">
+        <svg width="50" height="50" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="lk-grad" x1="8" y1="44" x2="52" y2="14" gradientUnits="userSpaceOnUse"><stop stop-color="#6F55EE"/><stop offset="1" stop-color="#1BC8E8"/></linearGradient></defs>
+          <rect x="13" y="36" width="8" height="15" rx="3" fill="#0B1220" opacity="0.85"/><rect x="26" y="28" width="8" height="23" rx="3" fill="#0B1220" opacity="0.92"/><rect x="39" y="19" width="8" height="32" rx="3" fill="#0B1220"/>
+          <rect x="7" y="14" width="52" height="12" rx="6" fill="url(#lk-grad)" opacity="0.5" transform="rotate(-22 32 26)"/>
+          <circle cx="48" cy="14" r="4.3" fill="url(#lk-grad)"/><circle cx="48" cy="14" r="1.7" fill="#fff"/>
+        </svg>
+        <span class="wm" style="font-size:34px;">Highlight</span>
+      </div>
+      <div class="cap">Horizontal lockup — light backgrounds</div>
+    </div>
+  </div>
+
+  <div class="grid cards-2" style="margin-top:18px;">
+    <div class="card dark">
+      <div class="lockup">
+        <svg width="50" height="50" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="lkd-grad" x1="8" y1="44" x2="52" y2="14" gradientUnits="userSpaceOnUse"><stop stop-color="#6F55EE"/><stop offset="1" stop-color="#1BC8E8"/></linearGradient></defs>
+          <rect x="13" y="36" width="8" height="15" rx="3" fill="#fff" opacity="0.6"/><rect x="26" y="28" width="8" height="23" rx="3" fill="#fff" opacity="0.8"/><rect x="39" y="19" width="8" height="32" rx="3" fill="#fff"/>
+          <rect x="7" y="14" width="52" height="12" rx="6" fill="url(#lkd-grad)" opacity="0.9" transform="rotate(-22 32 26)"/>
+          <circle cx="48" cy="14" r="4.3" fill="url(#lkd-grad)"/><circle cx="48" cy="14" r="1.7" fill="#fff"/>
+        </svg>
+        <span class="wm" style="font-size:34px;color:#fff;">Highlight</span>
+      </div>
+      <div class="cap">Horizontal lockup — dark backgrounds</div>
+    </div>
+
+    <div class="card">
+      <div class="sizes">
+        <svg width="48" height="48" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="s1g" x1="8" y1="46" x2="52" y2="14" gradientUnits="userSpaceOnUse"><stop stop-color="#6F55EE"/><stop offset="1" stop-color="#1BC8E8"/></linearGradient><linearGradient id="s1t" x1="32" y1="2" x2="32" y2="62" gradientUnits="userSpaceOnUse"><stop stop-color="#161722"/><stop offset="1" stop-color="#0A0B11"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="15" fill="url(#s1t)"/><g transform="translate(32 32) scale(0.86) translate(-29.6 -30.3)"><rect x="12.5" y="35" width="9" height="16" rx="3.2" fill="#fff" opacity="0.58"/><rect x="25.5" y="27" width="9" height="24" rx="3.2" fill="#fff" opacity="0.8"/><rect x="38.5" y="18" width="9" height="33" rx="3.2" fill="#fff"/><rect x="6" y="13" width="53" height="13" rx="6.5" fill="url(#s1g)" opacity="0.9" transform="rotate(-22 32 26)"/><circle cx="48" cy="13.5" r="4.8" fill="url(#s1g)"/><circle cx="48" cy="13.5" r="1.9" fill="#fff"/></g></svg>
+        <svg width="32" height="32" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="s2g" x1="8" y1="46" x2="52" y2="14" gradientUnits="userSpaceOnUse"><stop stop-color="#6F55EE"/><stop offset="1" stop-color="#1BC8E8"/></linearGradient><linearGradient id="s2t" x1="32" y1="2" x2="32" y2="62" gradientUnits="userSpaceOnUse"><stop stop-color="#161722"/><stop offset="1" stop-color="#0A0B11"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="15" fill="url(#s2t)"/><g transform="translate(32 32) scale(0.86) translate(-29.6 -30.3)"><rect x="12.5" y="35" width="9" height="16" rx="3.2" fill="#fff" opacity="0.58"/><rect x="25.5" y="27" width="9" height="24" rx="3.2" fill="#fff" opacity="0.8"/><rect x="38.5" y="18" width="9" height="33" rx="3.2" fill="#fff"/><rect x="6" y="13" width="53" height="13" rx="6.5" fill="url(#s2g)" opacity="0.9" transform="rotate(-22 32 26)"/><circle cx="48" cy="13.5" r="4.8" fill="url(#s2g)"/><circle cx="48" cy="13.5" r="1.9" fill="#fff"/></g></svg>
+        <svg width="20" height="20" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="s3g" x1="8" y1="46" x2="52" y2="14" gradientUnits="userSpaceOnUse"><stop stop-color="#6F55EE"/><stop offset="1" stop-color="#1BC8E8"/></linearGradient><linearGradient id="s3t" x1="32" y1="2" x2="32" y2="62" gradientUnits="userSpaceOnUse"><stop stop-color="#161722"/><stop offset="1" stop-color="#0A0B11"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="15" fill="url(#s3t)"/><g transform="translate(32 32) scale(0.86) translate(-29.6 -30.3)"><rect x="12.5" y="35" width="9" height="16" rx="3.2" fill="#fff" opacity="0.58"/><rect x="25.5" y="27" width="9" height="24" rx="3.2" fill="#fff" opacity="0.8"/><rect x="38.5" y="18" width="9" height="33" rx="3.2" fill="#fff"/><rect x="6" y="13" width="53" height="13" rx="6.5" fill="url(#s3g)" opacity="0.9" transform="rotate(-22 32 26)"/><circle cx="48" cy="13.5" r="4.8" fill="url(#s3g)"/><circle cx="48" cy="13.5" r="1.9" fill="#fff"/></g></svg>
+      </div>
+      <div class="cap">Favicon — 48 / 32 / 20 px (stays legible)</div>
+    </div>
+  </div>
+
+  <!-- Colour -->
+  <div class="section-label">Colour Palette</div>
+  <div class="swatches">
+    <div class="swatch"><div class="chip" style="background:#6F55EE"></div><div class="meta"><div class="nm">Primary · Violet</div><div class="val">#6F55EE · hsl(252 83% 63%)</div></div></div>
+    <div class="swatch"><div class="chip" style="background:#1BC8E8"></div><div class="meta"><div class="nm">Accent · Cyan</div><div class="val">#1BC8E8 · hsl(189 84% 47%)</div></div></div>
+    <div class="swatch"><div class="chip" style="background:linear-gradient(120deg,#6F55EE,#1BC8E8)"></div><div class="meta"><div class="nm">Brand Gradient</div><div class="val">120° Violet → Cyan</div></div></div>
+    <div class="swatch"><div class="chip" style="background:#0B1220"></div><div class="meta"><div class="nm">Ink · Foreground</div><div class="val">#0B1220 · hsl(222 47% 9%)</div></div></div>
+    <div class="swatch"><div class="chip" style="background:#6A7180"></div><div class="meta"><div class="nm">Muted</div><div class="val">#6A7180 · hsl(220 12% 46%)</div></div></div>
+    <div class="swatch"><div class="chip" style="background:#F7F8FC;border-bottom:1px solid #E5E8F0"></div><div class="meta"><div class="nm">Surface · Light</div><div class="val">#F7F8FC · hsl(228 30% 98%)</div></div></div>
+  </div>
+
+  <!-- Typography -->
+  <div class="section-label">Typography</div>
+  <div class="type-card">
+    <div class="type-row"><div class="type-meta">Display · Sora ExtraBold / Bold — headings &amp; product name</div><div class="display-xl grad-text">Highlight your SEO</div></div>
+    <div class="type-row"><div class="type-meta">Heading · Sora Bold</div><div class="display-lg">Generative Engine Optimisation</div></div>
+    <div class="type-row"><div class="type-meta">Body Large · Inter Regular</div><div class="body-lg">Bridging traditional SEO with answer-engine visibility.</div></div>
+    <div class="type-row"><div class="type-meta">Body · Inter Regular — paragraphs &amp; UI</div><div class="body">AI-powered audits, prompt optimisation, RAG content workflows, and citation scoring — in one modern workspace. The quick brown fox jumps over the lazy dog. 0123456789</div></div>
+  </div>
+
+  <!-- Usage -->
+  <div class="section-label">Usage</div>
+  <div class="do-grid">
+    <div class="note">
+      <h4><span class="ok">✓</span> Do</h4>
+      <ul>
+        <li>Use the dark app-icon tile on light or busy backgrounds.</li>
+        <li>Use the ink mark on light surfaces, the white mark on dark.</li>
+        <li>Keep clear space around the mark (≥ the width of one bar).</li>
+        <li>Keep the highlighter swipe at its angle — it's the brand cue.</li>
+      </ul>
+    </div>
+    <div class="note">
+      <h4><span class="no">✕</span> Don't</h4>
+      <ul>
+        <li>Don't recolour the gradient or change the bar order.</li>
+        <li>Don't stretch, rotate, or add drop shadows to the mark.</li>
+        <li>Don't straighten or remove the highlighter swipe.</li>
+        <li>Don't set the wordmark in a different font.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="foot">Highlight — AI SEO &amp; GEO Platform · Brand Guide v2 · Sora + Inter · #6F55EE → #1BC8E8</div>
+</div>
+</body>
+</html>

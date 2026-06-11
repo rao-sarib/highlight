@@ -1,0 +1,22 @@
+<svg width="280" height="72" viewBox="0 0 280 72" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Highlight">
+  <defs>
+    <linearGradient id="hd-grad" x1="8" y1="44" x2="52" y2="14" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6F55EE"/><stop offset="1" stop-color="#1BC8E8"/>
+    </linearGradient>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Sora:wght@700&display=swap');
+      .wm { font-family:'Sora','Segoe UI',system-ui,sans-serif; font-weight:700; }
+    </style>
+  </defs>
+
+  <g transform="translate(6 6) scale(0.86)">
+    <rect x="13" y="36" width="8" height="15" rx="3" fill="#ffffff" opacity="0.6"/>
+    <rect x="26" y="28" width="8" height="23" rx="3" fill="#ffffff" opacity="0.8"/>
+    <rect x="39" y="19" width="8" height="32" rx="3" fill="#ffffff"/>
+    <rect x="7" y="14" width="52" height="12" rx="6" fill="url(#hd-grad)" opacity="0.9" transform="rotate(-22 32 26)"/>
+    <circle cx="48" cy="14" r="4.3" fill="url(#hd-grad)"/>
+    <circle cx="48" cy="14" r="1.7" fill="#ffffff"/>
+  </g>
+
+  <text class="wm" x="76" y="46" font-size="32" letter-spacing="-0.5" fill="#FFFFFF">Highlight</text>
+</svg>

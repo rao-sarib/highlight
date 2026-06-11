@@ -1,0 +1,142 @@
+# ─────────────────────────────────────────────────────────────────────────
+# PRODUCTION compose — for deploying on a single server (e.g. AWS EC2).
+#
+# Differences from the local docker-compose.yml:
+#   • A Caddy reverse proxy is added in front, so the WHOLE app is served on
+#     ONE port (80). Caddy routes:  /api/*  -> backend,  everything else -> frontend.
+#   • The frontend talks to the backend with the relative path "/api/v1", so
+#     you NEVER have to hard-code the server's IP address, and there are no
+#     CORS problems (browser sees a single origin).
+#   • Only port 80 is exposed to the internet. The database, Redis, Temporal,
+#     and the backend are reachable only inside the private Docker network
+#     (safer — your Postgres is not open to the world).
+#
+# Run it with:
+#   docker compose -f docker-compose.prod.yml up -d --build
+# ─────────────────────────────────────────────────────────────────────────
+services:
+  db:
+    image: ankane/pgvector:latest
+    container_name: highlight_db
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: highlight_seo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
+    container_name: highlight_redis
+    restart: always
+
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    container_name: highlight_temporal
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: admin
+      POSTGRES_PWD: password
+      POSTGRES_SEEDS: db
+      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/config/dynamicconfig/docker.yaml
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    container_name: highlight_temporal_ui
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_UI_PORT: 8088
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: highlight_backend
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql://admin:password@db:5432/highlight_seo
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-super-secret-change-me-in-production}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      TEMPORAL_SERVER_URL: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_TASK_QUEUE: highlight-seo-task-queue
+    depends_on:
+      - db
+      - redis
+      - temporal
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: highlight_worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.temporal.worker"]
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql://admin:password@db:5432/highlight_seo
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-super-secret-change-me-in-production}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      TEMPORAL_SERVER_URL: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_TASK_QUEUE: highlight-seo-task-queue
+    depends_on:
+      - db
+      - redis
+      - temporal
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: highlight_frontend
+    restart: unless-stopped
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      # Relative path — resolved by the browser against the page's own origin
+      # and proxied to the backend by Caddy. No server IP needed here, ever.
+      NEXT_PUBLIC_API_BASE_URL: /api/v1
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: highlight_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

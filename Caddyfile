@@ -1,0 +1,26 @@
+# Caddy reverse proxy for the production deployment.
+#
+# Serves the whole app on port 80:
+#   • Requests starting with /api/  -> FastAPI backend (keeps the /api/v1 path)
+#   • Everything else               -> Next.js frontend (pages, /_next assets, HMR)
+#
+# Because the browser only ever talks to ONE origin (this server), there are no
+# CORS issues and the frontend never needs to know the server's IP address.
+#
+# Want HTTPS with a real domain later? Replace ":80" with your domain name
+# (e.g. "highlight.example.com") and Caddy fetches a free Let's Encrypt
+# certificate automatically. Nothing else needs to change.
+
+:80 {
+	encode gzip
+
+	# API traffic -> backend container on the internal Docker network.
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# Everything else -> Next.js frontend (also upgrades the HMR websocket).
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

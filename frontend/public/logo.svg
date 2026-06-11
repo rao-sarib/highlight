@@ -1,0 +1,13 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Highlight logo">
+  <defs>
+    <linearGradient id="hl-grad" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6f55ee"/>
+      <stop offset="1" stop-color="#1bc8e8"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="44" height="44" rx="13" fill="url(#hl-grad)"/>
+  <rect x="2.5" y="2.5" width="43" height="43" rx="12.5" fill="none" stroke="#ffffff" stroke-opacity="0.22"/>
+  <path d="M24 12c.7 4.9 2.8 7 7.7 7.7 .4.06.4.6 0 .66C26.8 21 24.7 23.1 24 28c-.06.4-.6.4-.66 0C22.6 23.1 20.5 21 15.6 20.36c-.4-.06-.4-.6 0-.66C20.5 19 22.6 16.9 23.34 12c.06-.4.6-.4.66 0Z" fill="#ffffff"/>
+  <circle cx="33.5" cy="31.5" r="2.2" fill="#ffffff" fill-opacity="0.9"/>
+  <circle cx="15" cy="31" r="1.5" fill="#ffffff" fill-opacity="0.7"/>
+</svg>

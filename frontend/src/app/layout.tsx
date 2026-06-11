@@ -25,11 +25,15 @@ export const metadata: Metadata = {
 // Applied before paint to avoid a flash of the wrong theme.
 const themeInitScript = `
 (function () {
+  var d = document.documentElement;
+  // Mark JS as available so scroll-reveal effects engage only with JS on
+  // (content stays visible by default for no-JS / SEO / slow hydration).
+  d.classList.add('js');
   try {
     var stored = localStorage.getItem('highlight-theme');
     var theme = stored === 'light' || stored === 'dark' ? stored : 'light';
-    if (theme === 'dark') document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
+    if (theme === 'dark') d.classList.add('dark');
+    else d.classList.remove('dark');
   } catch (e) {}
 })();
 `;

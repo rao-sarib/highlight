@@ -1,6 +1,20 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
+import { useRequestStore } from "@/store/requestStore";
+
 const AUTH_TOKEN_KEY = "highlight-auth-token";
+const MUTATING_METHODS = new Set(["post", "put", "patch", "delete"]);
+
+interface TrackedConfig extends InternalAxiosRequestConfig {
+  _countsAsMutation?: boolean;
+}
+
+function endMutation(config?: TrackedConfig): void {
+  if (config?._countsAsMutation) {
+    config._countsAsMutation = false;
+    useRequestStore.getState().end();
+  }
+}
 
 function getStoredToken(): string | null {
   if (typeof window === "undefined") {
@@ -54,19 +68,30 @@ export const api = axios.create({
   timeout: 60000,
 });
 
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+api.interceptors.request.use((config: TrackedConfig) => {
   const token = getStoredToken();
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
+  // Mark mutating requests as "running tasks" so the project switcher locks.
+  if (MUTATING_METHODS.has((config.method ?? "get").toLowerCase())) {
+    config._countsAsMutation = true;
+    useRequestStore.getState().begin();
+  }
+
   return config;
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    endMutation(response.config as TrackedConfig);
+    return response;
+  },
   (error: AxiosError<{ detail?: string }>) => {
+    endMutation(error.config as TrackedConfig | undefined);
+
     if (error.response?.status === 401) {
       clearStoredToken();
     }

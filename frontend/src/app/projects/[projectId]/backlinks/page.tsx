@@ -1,9 +1,9 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCcw } from "lucide-react";
 
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
@@ -19,6 +19,8 @@ interface BacklinkOpportunity {
 interface BacklinkResponse {
   opportunities: BacklinkOpportunity[];
   prospect_source: string;
+  target_keyword?: string;
+  generated_at?: string | null;
 }
 
 export default function ProjectBacklinksPage() {
@@ -29,8 +31,24 @@ export default function ProjectBacklinksPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const response = await api.get<BacklinkResponse>(
+          `/backlinks/${params.projectId}/latest`,
+        );
+        if (response.data.opportunities.length > 0) {
+          setResult(response.data);
+          if (response.data.target_keyword) setKeyword(response.data.target_keyword);
+        }
+      } catch {
+        // none yet
+      }
+    };
+    if (params.projectId) void restore();
+  }, [params.projectId]);
+
+  const generate = async (forceRefresh: boolean) => {
     setErrorMessage("");
     setIsSubmitting(true);
     try {
@@ -41,6 +59,7 @@ export default function ProjectBacklinksPage() {
           .split("\n")
           .map((item) => item.trim())
           .filter(Boolean),
+        force_refresh: forceRefresh,
       });
       setResult(response.data);
     } catch (error) {
@@ -48,6 +67,11 @@ export default function ProjectBacklinksPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await generate(false);
   };
 
   return (
@@ -103,6 +127,20 @@ export default function ProjectBacklinksPage() {
 
       {!isSubmitting && result?.opportunities.length ? (
         <section className="grid gap-4">
+          <div className="flex items-center justify-between gap-3 px-1">
+            <p className="text-xs text-muted-foreground">
+              {result.generated_at
+                ? `Last generated ${new Date(result.generated_at).toLocaleString()}`
+                : "Latest opportunities"}
+            </p>
+            <button
+              type="button"
+              onClick={() => void generate(true)}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:border-primary/50"
+            >
+              <RefreshCcw className="h-3.5 w-3.5" /> Refresh
+            </button>
+          </div>
           {result.opportunities.map((opportunity) => (
             <article
               key={opportunity.prospect_url}

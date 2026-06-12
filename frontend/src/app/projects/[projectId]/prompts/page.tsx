@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Copy, Loader2, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { Copy, Loader2, RefreshCcw, Sparkles } from "lucide-react";
 
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
@@ -9,24 +10,45 @@ import api from "@/lib/api";
 interface PromptOptimizationResponse {
   keyword: string;
   prompts: string[];
+  cached?: boolean;
+  generated_at?: string | null;
 }
 
 export default function ProjectPromptsPage() {
+  const params = useParams<{ projectId: string }>();
   const [keyword, setKeyword] = useState("");
   const [result, setResult] = useState<PromptOptimizationResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
-  const handleGenerate = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  // Auto-restore the last result for this project on open (no new API call).
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const response = await api.get<PromptOptimizationResponse>(
+          `/prompts/${params.projectId}/latest`,
+        );
+        if (response.data.prompts.length > 0) {
+          setResult(response.data);
+          setKeyword(response.data.keyword);
+        }
+      } catch {
+        // none yet
+      }
+    };
+    if (params.projectId) void restore();
+  }, [params.projectId]);
+
+  const generate = async (forceRefresh: boolean) => {
     setErrorMessage("");
     setCopiedIndex(null);
     setIsSubmitting(true);
-
     try {
       const response = await api.post<PromptOptimizationResponse>("/prompts/optimize", {
+        project_id: params.projectId,
         keyword: keyword.trim(),
+        force_refresh: forceRefresh,
       });
       setResult(response.data);
     } catch (error) {
@@ -36,6 +58,11 @@ export default function ProjectPromptsPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleGenerate = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await generate(false);
   };
 
   const handleCopy = async (prompt: string, index: number) => {
@@ -101,9 +128,24 @@ export default function ProjectPromptsPage() {
         </section>
       ) : null}
 
-      {!isSubmitting && result ? (
-        <section className="grid gap-4 xl:grid-cols-2">
-          {result.prompts.map((prompt, index) => (
+      {!isSubmitting && result && result.prompts.length > 0 ? (
+        <>
+          <div className="flex items-center justify-between gap-3 px-1">
+            <p className="text-xs text-muted-foreground">
+              {result.generated_at
+                ? `Last generated ${new Date(result.generated_at).toLocaleString()}`
+                : "Latest result"}
+            </p>
+            <button
+              type="button"
+              onClick={() => void generate(true)}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:border-primary/50"
+            >
+              <RefreshCcw className="h-3.5 w-3.5" /> Refresh
+            </button>
+          </div>
+          <section className="grid gap-4 xl:grid-cols-2">
+            {result.prompts.map((prompt, index) => (
             <article
               key={`${prompt}-${index}`}
               className="rounded-[1.5rem] border border-border/70 bg-card p-5 shadow-sm"
@@ -129,8 +171,9 @@ export default function ProjectPromptsPage() {
                 </p>
               ) : null}
             </article>
-          ))}
-        </section>
+            ))}
+          </section>
+        </>
       ) : null}
     </FeaturePageFrame>
   );

@@ -2,11 +2,21 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, FolderKanban } from "lucide-react";
+import { ChevronDown, FolderKanban, Loader2 } from "lucide-react";
 
 import ThemeToggle from "@/components/global/ThemeToggle";
 import { useAuthStore } from "@/store/authStore";
 import { useProjectStore } from "@/store/projectStore";
+import { useRequestStore } from "@/store/requestStore";
+
+/** Keep the current feature tab when switching projects (A/visibility -> B/visibility). */
+function projectPathFor(pathname: string, newProjectId: string): string {
+  const match = pathname.match(/^\/projects\/[^/]+(\/.*)?$/);
+  if (match) {
+    return `/projects/${newProjectId}${match[1] ?? ""}`;
+  }
+  return `/projects/${newProjectId}`;
+}
 
 export default function Header() {
   const pathname = usePathname();
@@ -19,6 +29,7 @@ export default function Header() {
   const setActiveProjectId = useProjectStore((state) => state.setActiveProjectId);
   const projects = useProjectStore((state) => state.projects);
   const fetchProjects = useProjectStore((state) => state.fetchProjects);
+  const isBusy = useRequestStore((state) => state.pendingMutations > 0);
 
   useEffect(() => {
     if (hasHydrated && isAuthenticated && !user) {
@@ -35,9 +46,13 @@ export default function Header() {
   }, [fetchProjects, hasHydrated, isAuthenticated]);
 
   const handleProjectChange = (projectId: string) => {
+    // Resist switching while a task is running — protects in-flight work.
+    if (isBusy || !projectId) {
+      return;
+    }
     setActiveProjectId(projectId);
-    if (pathname.startsWith("/projects/") && projectId) {
-      router.push(`/projects/${projectId}`);
+    if (pathname.startsWith("/projects/")) {
+      router.push(projectPathFor(pathname, projectId));
     }
   };
 
@@ -56,7 +71,13 @@ export default function Header() {
             <select
               value={activeProjectId ?? ""}
               onChange={(event) => handleProjectChange(event.target.value)}
-              className="h-11 w-full appearance-none rounded-xl border border-border bg-card px-3.5 pr-9 text-sm font-medium text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30"
+              disabled={isBusy}
+              title={
+                isBusy
+                  ? "A task is running for this project — finish it before switching."
+                  : "Switch the active project (applies to every feature)"
+              }
+              className="h-11 w-full appearance-none rounded-xl border border-border bg-card px-3.5 pr-9 text-sm font-medium text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {projects.length === 0 ? (
                 <option value="">No active project</option>
@@ -67,7 +88,11 @@ export default function Header() {
                 </option>
               ))}
             </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            {isBusy ? (
+              <Loader2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+            ) : (
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            )}
           </div>
         </div>
 

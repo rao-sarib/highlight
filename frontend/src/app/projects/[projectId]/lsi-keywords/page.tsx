@@ -1,9 +1,9 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCcw } from "lucide-react";
 
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
@@ -15,6 +15,7 @@ interface LsiResponse {
   covered: string[];
   gaps: string[];
   method: string;
+  generated_at?: string | null;
 }
 
 export default function ProjectLsiPage() {
@@ -24,8 +25,22 @@ export default function ProjectLsiPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const response = await api.get<LsiResponse>(`/lsi/${params.projectId}/latest`);
+        if (response.data.suggestions.length > 0) {
+          setResult(response.data);
+          setKeyword(response.data.keyword);
+        }
+      } catch {
+        // none yet
+      }
+    };
+    if (params.projectId) void restore();
+  }, [params.projectId]);
+
+  const generate = async (forceRefresh: boolean) => {
     setErrorMessage("");
     setIsSubmitting(true);
     try {
@@ -33,6 +48,7 @@ export default function ProjectLsiPage() {
         project_id: params.projectId,
         keyword: keyword.trim(),
         limit: 12,
+        force_refresh: forceRefresh,
       });
       setResult(response.data);
     } catch (error) {
@@ -40,6 +56,11 @@ export default function ProjectLsiPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await generate(false);
   };
 
   return (

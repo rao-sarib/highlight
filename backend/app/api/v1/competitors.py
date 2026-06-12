@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections import Counter
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -20,10 +21,13 @@ from app.db.session import get_db
 from app.models.embedding import Embedding
 from app.models.project import Project
 from app.models.user import User
+from app.services.cache_service import get_cached, get_latest_for_feature, make_input_key, upsert_cached
 from app.services.scraper_service import scraper_service
 from app.services.serper_service import serper_service
 
 router = APIRouter(prefix="/competitors", tags=["Competitors"])
+
+FEATURE = "competitors"
 
 TOKEN_PATTERN = re.compile(r"[a-zA-Z][a-zA-Z0-9-]+")
 STOP_WORDS = {
@@ -38,6 +42,7 @@ class CompetitorBenchmarkRequest(BaseModel):
     project_id: uuid.UUID
     competitor_url: str = Field(min_length=3, max_length=2083)
     keyword: str = Field(min_length=2, max_length=255)
+    force_refresh: bool = False
 
 
 class SerpEntry(BaseModel):
@@ -60,6 +65,8 @@ class CompetitorBenchmarkResponse(BaseModel):
     competitor_serp_rank: int | None = None
     serp_top_results: list[SerpEntry] = []
     serp_data_available: bool = False
+    cached: bool = False
+    generated_at: datetime | None = None
 
 
 def _get_owned_project_or_404(db: Session, project_id: uuid.UUID, user_id: uuid.UUID) -> Project:
@@ -90,6 +97,32 @@ def _top_terms(text: str, limit: int = 10) -> list[str]:
     return [term for term, _count in Counter(tokens).most_common(limit)]
 
 
+@router.get(
+    "/{project_id}/latest",
+    response_model=CompetitorBenchmarkResponse,
+    summary="Restore the last competitor benchmark",
+)
+def latest_benchmark(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CompetitorBenchmarkResponse:
+    _get_owned_project_or_404(db, project_id, current_user.id)
+    row = get_latest_for_feature(db, project_id, FEATURE)
+    if row is None:
+        return CompetitorBenchmarkResponse(
+            project_id=project_id,
+            competitor_url="",
+            keyword="",
+            project_keyword_density=0.0,
+            competitor_keyword_density=0.0,
+            density_gap=0.0,
+            semantic_gap_terms=[],
+            competitor_title=None,
+        )
+    return CompetitorBenchmarkResponse(**row.payload, cached=True, generated_at=row.updated_at)
+
+
 @router.post("/benchmark", response_model=CompetitorBenchmarkResponse, summary="Benchmark competitor SEO")
 async def benchmark_competitor(
     body: CompetitorBenchmarkRequest,
@@ -97,6 +130,13 @@ async def benchmark_competitor(
     current_user: User = Depends(get_current_user),
 ) -> CompetitorBenchmarkResponse:
     _get_owned_project_or_404(db, body.project_id, current_user.id)
+    input_key = make_input_key(body.competitor_url, body.keyword)
+    if not body.force_refresh:
+        cached = get_cached(db, body.project_id, FEATURE, input_key)
+        if cached is not None:
+            return CompetitorBenchmarkResponse(
+                **cached.payload, cached=True, generated_at=cached.updated_at
+            )
 
     # Project content from indexed embeddings
     project_chunks = db.exec(
@@ -136,7 +176,7 @@ async def benchmark_competitor(
             for r in serp_result.organic[:5]
         ]
 
-    return CompetitorBenchmarkResponse(
+    response = CompetitorBenchmarkResponse(
         project_id=body.project_id,
         competitor_url=body.competitor_url.strip(),
         keyword=body.keyword.strip(),
@@ -149,3 +189,9 @@ async def benchmark_competitor(
         serp_top_results=serp_top_results,
         serp_data_available=serp_data_available,
     )
+    payload = response.model_dump(mode="json")
+    payload.pop("cached", None)
+    payload.pop("generated_at", None)
+    row = upsert_cached(db, body.project_id, FEATURE, input_key, payload)
+    response.generated_at = row.updated_at
+    return response

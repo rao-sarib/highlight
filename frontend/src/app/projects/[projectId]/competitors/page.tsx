@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { ExternalLink, Globe2, Loader2, Scale, Target, Trophy } from "lucide-react";
+import { ExternalLink, Globe2, Loader2, RefreshCcw, Scale, Target, Trophy } from "lucide-react";
 
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
@@ -25,6 +25,7 @@ interface CompetitorResponse {
   competitor_serp_rank: number | null;
   serp_top_results: SerpEntry[];
   serp_data_available: boolean;
+  generated_at?: string | null;
 }
 
 export default function ProjectCompetitorPage() {
@@ -35,16 +36,33 @@ export default function ProjectCompetitorPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const response = await api.get<CompetitorResponse>(
+          `/competitors/${params.projectId}/latest`,
+        );
+        if (response.data.competitor_url) {
+          setResult(response.data);
+          setCompetitorUrl(response.data.competitor_url);
+          setKeyword(response.data.keyword);
+        }
+      } catch {
+        // none yet
+      }
+    };
+    if (params.projectId) void restore();
+  }, [params.projectId]);
+
+  const compare = async (forceRefresh: boolean) => {
     setErrorMessage("");
     setIsSubmitting(true);
-
     try {
       const response = await api.post<CompetitorResponse>("/competitors/benchmark", {
         project_id: params.projectId,
         competitor_url: competitorUrl.trim(),
         keyword: keyword.trim(),
+        force_refresh: forceRefresh,
       });
       setResult(response.data);
     } catch (error) {
@@ -52,6 +70,11 @@ export default function ProjectCompetitorPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await compare(false);
   };
 
   return (
@@ -112,6 +135,20 @@ export default function ProjectCompetitorPage() {
 
       {!isSubmitting && result ? (
         <>
+          <div className="flex items-center justify-between gap-3 px-1">
+            <p className="text-xs text-muted-foreground">
+              {result.generated_at
+                ? `Last compared ${new Date(result.generated_at).toLocaleString()}`
+                : "Latest comparison"}
+            </p>
+            <button
+              type="button"
+              onClick={() => void compare(true)}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:border-primary/50"
+            >
+              <RefreshCcw className="h-3.5 w-3.5" /> Refresh
+            </button>
+          </div>
           {/* Density metrics */}
           <div className="grid gap-4 md:grid-cols-3">
             <section className="rounded-[1.5rem] border border-border/70 bg-card p-5 shadow-sm">

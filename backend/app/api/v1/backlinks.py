@@ -15,6 +15,7 @@ engines retrieve — so the same outreach supports both SEO and AI visibility.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,12 +26,14 @@ from app.api.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.user import User
+from app.services.cache_service import get_cached, get_latest_for_feature, make_input_key, upsert_cached
 from app.services.llm_service import llm_service
 from app.services.scraper_service import scraper_service
 from app.services.serper_service import serper_service
 
 router = APIRouter(prefix="/backlinks", tags=["Backlinks"])
 
+FEATURE = "backlinks"
 MAX_PROSPECTS = 5
 
 
@@ -38,6 +41,7 @@ class BacklinkOpportunityRequest(BaseModel):
     project_id: uuid.UUID
     target_keyword: str = Field(min_length=2, max_length=255)
     prospect_urls: list[str] = Field(default_factory=list, max_length=10)
+    force_refresh: bool = False
 
 
 class BacklinkOpportunity(BaseModel):
@@ -51,8 +55,10 @@ class BacklinkOpportunity(BaseModel):
 class BacklinkOpportunityResponse(BaseModel):
     project_id: uuid.UUID
     target_keyword: str
-    opportunities: list[BacklinkOpportunity]
+    opportunities: list[BacklinkOpportunity] = []
     prospect_source: str = "serp"  # serp | page_links
+    cached: bool = False
+    generated_at: datetime | None = None
 
 
 def _get_owned_project_or_404(db: Session, project_id: uuid.UUID, user_id: uuid.UUID) -> Project:
@@ -69,6 +75,23 @@ def _host_of(url: str) -> str:
         return ""
 
 
+@router.get(
+    "/{project_id}/latest",
+    response_model=BacklinkOpportunityResponse,
+    summary="Restore the last backlink result",
+)
+def latest_backlinks(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> BacklinkOpportunityResponse:
+    _get_owned_project_or_404(db, project_id, current_user.id)
+    row = get_latest_for_feature(db, project_id, FEATURE)
+    if row is None:
+        return BacklinkOpportunityResponse(project_id=project_id, target_keyword="")
+    return BacklinkOpportunityResponse(**row.payload, cached=True, generated_at=row.updated_at)
+
+
 @router.post("/opportunities", response_model=BacklinkOpportunityResponse, summary="Find backlink opportunities")
 async def find_backlink_opportunities(
     body: BacklinkOpportunityRequest,
@@ -78,6 +101,14 @@ async def find_backlink_opportunities(
     project = _get_owned_project_or_404(db, body.project_id, current_user.id)
     project_host = _host_of(project.url)
     keyword = body.target_keyword.strip()
+
+    input_key = make_input_key(keyword, "|".join(sorted(body.prospect_urls)))
+    if not body.force_refresh:
+        cached = get_cached(db, body.project_id, FEATURE, input_key)
+        if cached is not None:
+            return BacklinkOpportunityResponse(
+                **cached.payload, cached=True, generated_at=cached.updated_at
+            )
 
     # ── Discover prospects ──────────────────────────────────────────────────
     serp_positions: dict[str, int] = {}
@@ -168,9 +199,15 @@ async def find_backlink_opportunities(
             )
         )
 
-    return BacklinkOpportunityResponse(
+    response = BacklinkOpportunityResponse(
         project_id=project.id,
         target_keyword=keyword,
         opportunities=opportunities,
         prospect_source=prospect_source,
     )
+    payload = response.model_dump(mode="json")
+    payload.pop("cached", None)
+    payload.pop("generated_at", None)
+    row = upsert_cached(db, body.project_id, FEATURE, input_key, payload)
+    response.generated_at = row.updated_at
+    return response

@@ -12,6 +12,9 @@ interface LsiResponse {
   keyword: string;
   suggestions: string[];
   supporting_chunks: string[];
+  covered: string[];
+  gaps: string[];
+  method: string;
 }
 
 export default function ProjectLsiPage() {
@@ -89,6 +92,43 @@ export default function ProjectLsiPage() {
               <span className="font-medium text-foreground">SEO Fixes</span> workflow first to
               index your site content, then try again.
             </p>
+          ) : result.gaps.length > 0 || result.covered.length > 0 ? (
+            <div className="mt-4 grid gap-5">
+              {result.gaps.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-warning">
+                    Content gaps — write these next
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {result.gaps.map((term) => (
+                      <span
+                        key={term}
+                        className="rounded-full border border-warning/40 bg-warning/10 px-3 py-1.5 text-sm text-foreground"
+                      >
+                        {term}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {result.covered.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-success">
+                    Already covered by your content
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {result.covered.map((term) => (
+                      <span
+                        key={term}
+                        className="rounded-full border border-success/40 bg-success/10 px-3 py-1.5 text-sm text-foreground"
+                      >
+                        {term}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           ) : (
             <div className="mt-4 flex flex-wrap gap-2">
               {result.suggestions.map((term) => (

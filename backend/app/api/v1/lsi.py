@@ -1,9 +1,15 @@
 """
-LSI keyword suggestion endpoint for UC-011.
+LSI / semantic keyword suggestion endpoint for UC-011.
+
+Uses GPT-4o grounded in the project's pgvector chunks to produce genuinely
+related search terms (entities, synonyms, subtopics, question phrasings) and
+flags which ones the site already covers vs. content gaps. Falls back to
+simple term-frequency extraction if the LLM call fails.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from collections import Counter
@@ -16,7 +22,10 @@ from app.api.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.user import User
+from app.services.llm_service import llm_service
 from app.services.rag_service import rag_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/lsi", tags=["LSI Keywords"])
 
@@ -40,6 +49,10 @@ class LSIKeywordResponse(BaseModel):
     keyword: str
     supporting_chunks: list[str]
     suggestions: list[str]
+    # Semantic split: terms the site already covers vs. content gaps to write.
+    covered: list[str] = []
+    gaps: list[str] = []
+    method: str = "semantic_llm"
 
 
 def _get_owned_project_or_404(db: Session, project_id: uuid.UUID, user_id: uuid.UUID) -> Project:
@@ -49,7 +62,19 @@ def _get_owned_project_or_404(db: Session, project_id: uuid.UUID, user_id: uuid.
     return project
 
 
-@router.post("/suggest", response_model=LSIKeywordResponse, summary="Suggest LSI keywords")
+def _frequency_fallback(chunks: list[str], keyword: str, limit: int) -> list[str]:
+    """Legacy term-frequency extraction, kept as a resilience fallback."""
+    seed_words = set(TOKEN_PATTERN.findall(keyword.lower()))
+    token_counter: Counter[str] = Counter()
+    for chunk in chunks:
+        for token in TOKEN_PATTERN.findall(chunk.lower()):
+            if len(token) <= 3 or token in STOP_WORDS or token in seed_words:
+                continue
+            token_counter[token] += 1
+    return [term for term, _count in token_counter.most_common(limit)]
+
+
+@router.post("/suggest", response_model=LSIKeywordResponse, summary="Suggest semantic keywords")
 async def suggest_lsi_keywords(
     body: LSIKeywordRequest,
     db: Session = Depends(get_db),
@@ -63,18 +88,29 @@ async def suggest_lsi_keywords(
         top_k=max(body.limit, 8),
     )
 
-    seed_words = set(TOKEN_PATTERN.findall(body.keyword.lower()))
-    token_counter: Counter[str] = Counter()
-    for chunk in supporting_chunks:
-        for token in TOKEN_PATTERN.findall(chunk.lower()):
-            if len(token) <= 3 or token in STOP_WORDS or token in seed_words:
-                continue
-            token_counter[token] += 1
+    try:
+        keywords = await llm_service.generate_related_keywords(
+            body.keyword,
+            supporting_chunks,
+            limit=body.limit,
+        )
+        suggestions = [item["term"] for item in keywords]
+        covered = [item["term"] for item in keywords if item.get("covered")]
+        gaps = [item["term"] for item in keywords if not item.get("covered")]
+        method = "semantic_llm"
+    except Exception as exc:
+        logger.warning("Semantic keyword generation failed, using frequency fallback: %s", exc)
+        suggestions = _frequency_fallback(supporting_chunks, body.keyword, body.limit)
+        covered = []
+        gaps = []
+        method = "frequency_fallback"
 
-    suggestions = [term for term, _count in token_counter.most_common(body.limit)]
     return LSIKeywordResponse(
         project_id=body.project_id,
         keyword=body.keyword.strip(),
         supporting_chunks=supporting_chunks,
         suggestions=suggestions,
+        covered=covered,
+        gaps=gaps,
+        method=method,
     )

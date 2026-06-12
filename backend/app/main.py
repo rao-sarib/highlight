@@ -20,6 +20,7 @@ from app.models.user import User          # noqa: F401
 from app.models.project import Project    # noqa: F401
 from app.models.content import Content    # noqa: F401
 from app.models.embedding import Embedding  # noqa: F401
+from app.models.visibility_scan import VisibilityScan  # noqa: F401
 
 # ── Import routers ───────────────────────────────────────
 from app.api.v1.auth import router as auth_router
@@ -58,6 +59,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         conn.execute(
             text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS ga4_property_id VARCHAR(32)")
         )
+
+    # Enum migration: the GEO content type was added after the initial release.
+    # On a fresh database create_all already includes it; on existing databases
+    # the native Postgres enum needs the extra value.
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TYPE contenttype ADD VALUE IF NOT EXISTS 'GEO'"))
     yield
 
 

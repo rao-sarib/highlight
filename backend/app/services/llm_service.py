@@ -80,6 +80,109 @@ class LLMService:
             raise LLMServiceError("OpenAI did not return the expected 5 prompts.")
         return cleaned_prompts[:5]
 
+    async def generate_geo_prompts(self, keyword: str, count: int = 4) -> list[str]:
+        """Generate brand-neutral buyer questions for live AI-visibility scans.
+
+        The prompts must NOT name any brand — the whole point is testing
+        whether the engine brings the brand up organically for category
+        questions.
+        """
+
+        normalized_keyword = keyword.strip()
+        if not normalized_keyword:
+            raise ValueError("Keyword is required for GEO prompt generation.")
+        count = max(2, min(count, 6))
+
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=0.6,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a Generative Engine Optimization strategist. Generate "
+                        f"exactly {count} realistic questions that buyers type into AI "
+                        "assistants (ChatGPT/Perplexity) when researching the topic. Mix "
+                        "intents: 'best X for ...', comparisons, how-to-choose, and "
+                        "problem-solving. CRITICAL: never mention any specific brand, "
+                        "company, or product name. Return only valid JSON in the form "
+                        '{"prompts":["...","..."]}.'
+                    ),
+                },
+                {"role": "user", "content": f"Topic: {normalized_keyword}"},
+            ],
+        )
+        raw_content = (response.choices[0].message.content or "").strip()
+        payload = self._safe_json_object(raw_content)
+        prompts = [
+            str(prompt).strip()
+            for prompt in payload.get("prompts", [])
+            if isinstance(prompt, str) and prompt.strip()
+        ]
+        if len(prompts) < 2:
+            raise LLMServiceError("OpenAI did not return usable GEO prompts.")
+        return prompts[:count]
+
+    async def generate_related_keywords(
+        self,
+        keyword: str,
+        context_chunks: list[str],
+        limit: int = 12,
+    ) -> list[dict[str, Any]]:
+        """Generate semantically related keywords, flagging site-content gaps.
+
+        Returns a list of {"term": str, "covered": bool} where `covered` means
+        the provided site content already addresses the term.
+        """
+
+        normalized_keyword = keyword.strip()
+        if not normalized_keyword:
+            raise ValueError("Keyword is required for related-keyword generation.")
+        limit = max(1, min(limit, 25))
+
+        context_block = " ".join(chunk.strip() for chunk in context_chunks if chunk.strip())
+        context_block = context_block[:4000] or "No site content available."
+
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=0.4,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a semantic SEO expert. Given a target keyword and excerpts "
+                        f"of a site's content, return the {limit} most valuable related "
+                        "search terms: LSI terms, entities, synonyms, subtopics, and "
+                        "question phrasings real users search. For each term set "
+                        '"covered" to true only if the site excerpts already address it. '
+                        'Return only valid JSON: {"keywords":[{"term":"...","covered":true}]}.'
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Target keyword: {normalized_keyword}\n\nSite content excerpts: "
+                        f"{context_block}"
+                    ),
+                },
+            ],
+        )
+        raw_content = (response.choices[0].message.content or "").strip()
+        payload = self._safe_json_object(raw_content)
+        keywords: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in payload.get("keywords", []):
+            if not isinstance(item, dict):
+                continue
+            term = str(item.get("term", "")).strip()
+            if not term or term.lower() in seen:
+                continue
+            seen.add(term.lower())
+            keywords.append({"term": term, "covered": bool(item.get("covered", False))})
+        return keywords[:limit]
+
     async def generate_content(
         self,
         topic: str,
@@ -112,6 +215,20 @@ class LLMService:
                 "Write an SEO title and meta description. Return exactly two lines in this "
                 "format: 'Title: ...' and 'Description: ...'. Keep the title under 60 "
                 "characters and the description under 155 characters."
+            ),
+            "geo": (
+                "Write a GEO-optimized (Generative Engine Optimization) page section "
+                "designed to be cited by AI answer engines like ChatGPT and Perplexity. "
+                "Structure it exactly as: (1) '## Direct Answer' — a 40-60 word "
+                "self-contained answer an AI can quote verbatim; (2) '## Key Facts' — "
+                "4-6 bullet points with specific, citable claims (numbers, comparisons, "
+                "concrete capabilities), grounded in the provided context; (3) "
+                "'## Frequently Asked Questions' — 5 questions phrased the way users ask "
+                "AI assistants, each with a direct 2-3 sentence answer that names the "
+                "brand naturally; (4) '## FAQPage Schema' — a ```json code block "
+                "containing valid schema.org FAQPage JSON-LD for those 5 questions. "
+                "Write factually and avoid marketing fluff — AI engines cite specific, "
+                "verifiable statements."
             ),
         }
 

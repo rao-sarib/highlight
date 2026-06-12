@@ -13,10 +13,12 @@ interface BacklinkOpportunity {
   prospect_title: string | null;
   rationale: string;
   outreach_email: string;
+  serp_position: number | null;
 }
 
 interface BacklinkResponse {
   opportunities: BacklinkOpportunity[];
+  prospect_source: string;
 }
 
 export default function ProjectBacklinksPage() {
@@ -52,7 +54,7 @@ export default function ProjectBacklinksPage() {
     <FeaturePageFrame
       eyebrow="Backlinks"
       title="Find backlink opportunities"
-      description="Collect outreach-ready backlink ideas and AI-generated emails for likely prospects."
+      description="Finds pages that actually rank on Google for your keyword (real SERP prospects) and drafts personalized outreach emails — links from these pages boost both rankings and the sources AI engines cite."
     >
       <section className="rounded-[1.5rem] border border-border/70 bg-card p-6">
         <form className="space-y-4" onSubmit={handleSubmit}>
@@ -106,9 +108,16 @@ export default function ProjectBacklinksPage() {
               key={opportunity.prospect_url}
               className="rounded-[1.5rem] border border-border/70 bg-card p-6"
             >
-              <h2 className="text-lg font-semibold text-foreground">
-                {opportunity.prospect_title || opportunity.prospect_url}
-              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold text-foreground">
+                  {opportunity.prospect_title || opportunity.prospect_url}
+                </h2>
+                {opportunity.serp_position ? (
+                  <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary ring-1 ring-inset ring-primary/30">
+                    Ranks #{opportunity.serp_position} on Google
+                  </span>
+                ) : null}
+              </div>
               <p className="mt-2 text-sm text-muted-foreground">{opportunity.rationale}</p>
               <pre className="mt-5 overflow-x-auto whitespace-pre-wrap rounded-xl bg-background p-4 text-sm leading-6 text-foreground">
                 {opportunity.outreach_email}

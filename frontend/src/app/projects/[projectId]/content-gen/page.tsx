@@ -7,7 +7,7 @@ import { Clock3, FileText, Loader2, Sparkles } from "lucide-react";
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
 
-type ContentType = "blog" | "faq" | "meta";
+type ContentType = "blog" | "faq" | "meta" | "geo";
 
 interface WorkflowResponse {
   workflow_id: string;
@@ -84,7 +84,7 @@ export default function ProjectContentGenerationPage() {
     <FeaturePageFrame
       eyebrow="Content Generation"
       title="Launch the Temporal content workflow"
-      description="Send a topic and content type to the backend workflow, then review the generated content already saved for this project."
+      description="Send a topic and content type to the backend workflow, then review the generated content already saved for this project. The GEO type produces AI-citable sections (direct answer, key facts, FAQ, schema) designed to win citations in AI engines."
     >
       <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
         <form className="grid gap-4 xl:grid-cols-[1fr_180px_auto]" onSubmit={handleSubmit}>
@@ -103,6 +103,7 @@ export default function ProjectContentGenerationPage() {
             <option value="blog">Blog</option>
             <option value="faq">FAQ</option>
             <option value="meta">Meta</option>
+            <option value="geo">GEO — AI-citable</option>
           </select>
           <button
             type="submit"

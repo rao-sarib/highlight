@@ -20,6 +20,8 @@ class ContentType(str, enum.Enum):
     BLOG = "blog"
     FAQ = "faq"
     META = "meta"
+    # GEO mode: AI-citable section (direct answer + key facts + FAQ + schema)
+    GEO = "geo"
 
 
 class ContentStatus(str, enum.Enum):

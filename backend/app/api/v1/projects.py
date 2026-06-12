@@ -17,6 +17,7 @@ from app.models.content import Content
 from app.models.embedding import Embedding
 from app.models.project import Project
 from app.models.user import User
+from app.models.visibility_scan import VisibilityScan
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
@@ -148,6 +149,7 @@ def delete_project(
     project = _get_owned_project_or_404(db, project_id, current_user.id)
     db.exec(delete(Embedding).where(Embedding.project_id == project_id))
     db.exec(delete(Content).where(Content.project_id == project_id))
+    db.exec(delete(VisibilityScan).where(VisibilityScan.project_id == project_id))
     db.delete(project)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

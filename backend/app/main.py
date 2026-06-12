@@ -21,6 +21,8 @@ from app.models.project import Project    # noqa: F401
 from app.models.content import Content    # noqa: F401
 from app.models.embedding import Embedding  # noqa: F401
 from app.models.visibility_scan import VisibilityScan  # noqa: F401
+from app.models.page_audit import PageAudit  # noqa: F401
+from app.models.feature_cache import FeatureCache  # noqa: F401
 
 # ── Import routers ───────────────────────────────────────
 from app.api.v1.auth import router as auth_router
@@ -59,6 +61,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         conn.execute(
             text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS ga4_property_id VARCHAR(32)")
         )
+        # Project: niche capture + crawl/score fields (added after first release).
+        for ddl in (
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS niche VARCHAR(255)",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS target_audience VARCHAR(255)",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS description VARCHAR(2000)",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS detected_niche VARCHAR(512)",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS pages_crawled INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_crawl_at TIMESTAMP",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS seo_health_score DOUBLE PRECISION",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_visibility_score DOUBLE PRECISION",
+            # Users: subscription plan + monthly scan quota tracking.
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS plan VARCHAR(32) NOT NULL DEFAULT 'agency'",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS scans_used INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS scans_period VARCHAR(7) NOT NULL DEFAULT ''",
+        ):
+            conn.execute(text(ddl))
 
     # Enum migration: the GEO content type was added after the initial release.
     # On a fresh database create_all already includes it; on existing databases

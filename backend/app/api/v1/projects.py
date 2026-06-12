@@ -13,8 +13,11 @@ from sqlmodel import Session, delete, select
 
 from app.api.dependencies import get_current_user
 from app.db.session import get_db
+from app.core.plans import get_plan
 from app.models.content import Content
 from app.models.embedding import Embedding
+from app.models.feature_cache import FeatureCache
+from app.models.page_audit import PageAudit
 from app.models.project import Project
 from app.models.user import User
 from app.models.visibility_scan import VisibilityScan
@@ -25,11 +28,17 @@ router = APIRouter(prefix="/projects", tags=["Projects"])
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     url: str = Field(min_length=3, max_length=2083)
+    niche: str | None = Field(default=None, max_length=255)
+    target_audience: str | None = Field(default=None, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
 
 
 class ProjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     url: str | None = Field(default=None, min_length=3, max_length=2083)
+    niche: str | None = Field(default=None, max_length=255)
+    target_audience: str | None = Field(default=None, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
     ga4_property_id: str | None = Field(default=None, max_length=32)
 
 
@@ -38,6 +47,14 @@ class ProjectRead(BaseModel):
     owner_id: uuid.UUID
     name: str
     url: str
+    niche: str | None = None
+    target_audience: str | None = None
+    description: str | None = None
+    detected_niche: str | None = None
+    pages_crawled: int = 0
+    last_crawl_at: datetime | None = None
+    seo_health_score: float | None = None
+    ai_visibility_score: float | None = None
     ga4_property_id: str | None
     last_audited_at: datetime | None
     created_at: datetime
@@ -84,10 +101,27 @@ def create_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ProjectRead:
+    # Plan limit: enforce the project cap for the user's tier.
+    plan = get_plan(current_user.plan)
+    existing_count = len(
+        db.exec(select(Project.id).where(Project.owner_id == current_user.id)).all()
+    )
+    if existing_count >= plan.max_projects:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Your {plan.name} plan allows {plan.max_projects} project(s). "
+                "Upgrade your plan to add more."
+            ),
+        )
+
     project = Project(
         owner_id=current_user.id,
         name=body.name.strip(),
         url=body.url.strip(),
+        niche=(body.niche or "").strip() or None,
+        target_audience=(body.target_audience or "").strip() or None,
+        description=(body.description or "").strip() or None,
     )
     db.add(project)
     db.commit()
@@ -118,6 +152,12 @@ def update_project(
         project.name = body.name.strip()
     if body.url is not None:
         project.url = body.url.strip()
+    if body.niche is not None:
+        project.niche = body.niche.strip() or None
+    if body.target_audience is not None:
+        project.target_audience = body.target_audience.strip() or None
+    if body.description is not None:
+        project.description = body.description.strip() or None
     if body.ga4_property_id is not None:
         cleaned = body.ga4_property_id.strip().removeprefix("properties/")
         if not cleaned:
@@ -150,6 +190,8 @@ def delete_project(
     db.exec(delete(Embedding).where(Embedding.project_id == project_id))
     db.exec(delete(Content).where(Content.project_id == project_id))
     db.exec(delete(VisibilityScan).where(VisibilityScan.project_id == project_id))
+    db.exec(delete(PageAudit).where(PageAudit.project_id == project_id))
+    db.exec(delete(FeatureCache).where(FeatureCache.project_id == project_id))
     db.delete(project)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

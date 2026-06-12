@@ -31,6 +31,17 @@ class Project(SQLModel, table=True):
     )
     name: str = Field(max_length=255, nullable=False)
     url: str = Field(max_length=2083, nullable=False)
+    # User-declared positioning, captured at registration.
+    niche: str | None = Field(default=None, max_length=255, nullable=True)
+    target_audience: str | None = Field(default=None, max_length=255, nullable=True)
+    description: str | None = Field(default=None, max_length=2000, nullable=True)
+    # Auto-derived during the crawl/audit.
+    detected_niche: str | None = Field(default=None, max_length=512, nullable=True)
+    pages_crawled: int = Field(default=0, nullable=False)
+    last_crawl_at: datetime | None = Field(default=None, nullable=True)
+    # Headline scores surfaced on the dashboard (0-100).
+    seo_health_score: float | None = Field(default=None, nullable=True)
+    ai_visibility_score: float | None = Field(default=None, nullable=True)
     ga4_property_id: str | None = Field(default=None, max_length=32, nullable=True)
     last_audited_at: datetime | None = Field(default=None, nullable=True)
     created_at: datetime = Field(

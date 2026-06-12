@@ -124,6 +124,29 @@ class LLMService:
             raise LLMServiceError("OpenAI did not return usable GEO prompts.")
         return prompts[:count]
 
+    async def detect_niche(self, samples: list[str]) -> str:
+        """Infer a site's niche/category from sampled titles, headings, text."""
+        joined = " | ".join(s.strip() for s in samples if s and s.strip())[:3500]
+        if not joined:
+            return ""
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=0.2,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You classify websites. From the page signals provided, return a "
+                        "concise niche/category description (5-12 words) describing what the "
+                        "site offers and to whom. Return plain text only, no quotes."
+                    ),
+                },
+                {"role": "user", "content": joined},
+            ],
+        )
+        return (response.choices[0].message.content or "").strip().strip('"')[:480]
+
     async def generate_related_keywords(
         self,
         keyword: str,

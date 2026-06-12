@@ -19,6 +19,9 @@ export default function NewProjectPage() {
   const upsertProject = useProjectStore((state) => state.upsertProject);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
+  const [niche, setNiche] = useState("");
+  const [targetAudience, setTargetAudience] = useState("");
+  const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -31,6 +34,9 @@ export default function NewProjectPage() {
       const response = await api.post<ProjectResponse>("/projects", {
         name: name.trim(),
         url: url.trim(),
+        niche: niche.trim() || null,
+        target_audience: targetAudience.trim() || null,
+        description: description.trim() || null,
       });
 
       upsertProject(response.data);
@@ -79,6 +85,49 @@ export default function NewProjectPage() {
               placeholder="https://example.com"
               className="h-12 w-full rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
               required
+            />
+          </div>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground" htmlFor="project-niche">
+                Targeted niche
+              </label>
+              <input
+                id="project-niche"
+                value={niche}
+                onChange={(event) => setNiche(event.target.value)}
+                placeholder="e.g. project management software"
+                className="h-12 w-full rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
+              />
+              <p className="text-xs text-muted-foreground">
+                Drives the AI-visibility prompts. We also auto-detect it from your site.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground" htmlFor="project-audience">
+                Target audience
+              </label>
+              <input
+                id="project-audience"
+                value={targetAudience}
+                onChange={(event) => setTargetAudience(event.target.value)}
+                placeholder="e.g. small marketing teams"
+                className="h-12 w-full rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground" htmlFor="project-description">
+              Short description <span className="text-muted-foreground">(optional)</span>
+            </label>
+            <textarea
+              id="project-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="What does this site offer, and what makes it different?"
+              className="min-h-24 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
             />
           </div>
 

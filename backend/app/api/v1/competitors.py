@@ -16,7 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, require_feature
+from app.core.plans import FEATURE_COMPETITORS
 from app.db.session import get_db
 from app.models.embedding import Embedding
 from app.models.project import Project
@@ -127,7 +128,7 @@ def latest_benchmark(
 async def benchmark_competitor(
     body: CompetitorBenchmarkRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature(FEATURE_COMPETITORS)),
 ) -> CompetitorBenchmarkResponse:
     _get_owned_project_or_404(db, body.project_id, current_user.id)
     input_key = make_input_key(body.competitor_url, body.keyword)

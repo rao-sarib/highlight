@@ -13,7 +13,8 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 from temporalio.client import Client
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, require_feature
+from app.core.plans import FEATURE_CONTENT
 from app.db.session import get_db
 from app.models.content import Content, ContentStatus, ContentType
 from app.models.project import Project
@@ -72,7 +73,7 @@ async def _get_temporal_client() -> Client:
 async def generate_content(
     body: ContentGenerateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature(FEATURE_CONTENT)),
 ) -> ContentWorkflowResponse:
     project = _get_owned_project_or_404(db, body.project_id, current_user.id)
     try:
@@ -115,7 +116,7 @@ class DirectContentRequest(BaseModel):
 async def generate_content_direct(
     body: DirectContentRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature(FEATURE_CONTENT)),
 ) -> ContentRead:
     """Synchronously generate RAG-grounded content and save it.
 

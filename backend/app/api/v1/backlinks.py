@@ -22,7 +22,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, require_feature
+from app.core.plans import FEATURE_BACKLINKS
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.user import User
@@ -96,7 +97,7 @@ def latest_backlinks(
 async def find_backlink_opportunities(
     body: BacklinkOpportunityRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature(FEATURE_BACKLINKS)),
 ) -> BacklinkOpportunityResponse:
     project = _get_owned_project_or_404(db, body.project_id, current_user.id)
     project_host = _host_of(project.url)

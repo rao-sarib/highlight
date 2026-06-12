@@ -29,6 +29,7 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.analysis import router as analysis_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.backlinks import router as backlinks_router
+from app.api.v1.billing import router as billing_router
 from app.api.v1.competitors import router as competitors_router
 from app.api.v1.content import router as content_router
 from app.api.v1.fixes import router as fixes_router
@@ -118,6 +119,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(analysis_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(backlinks_router, prefix="/api/v1")
+app.include_router(billing_router, prefix="/api/v1")
 app.include_router(competitors_router, prefix="/api/v1")
 app.include_router(content_router, prefix="/api/v1")
 app.include_router(fixes_router, prefix="/api/v1")

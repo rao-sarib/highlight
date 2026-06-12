@@ -29,6 +29,7 @@ from app.models.visibility_scan import VisibilityScan
 from app.db.session import get_db
 from app.services.geo_service import GeoServiceError, geo_service
 from app.services.llm_service import llm_service
+from app.services.quota_service import consume_scan
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +177,9 @@ async def calculate_visibility_score(
                 created = created.replace(tzinfo=timezone.utc)
             if created >= cutoff:
                 return _scan_to_response(cached_scan, body.project_id, cached=True)
+
+    # Quota: a fresh live scan consumes one of the month's allowance.
+    consume_scan(current_user, db)
 
     # ── 1. Brand-neutral buyer prompts ──────────────────────────────────────
     try:

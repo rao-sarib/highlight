@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import type { ComponentType } from "react";
 import {
   BarChart3,
+  CreditCard,
   FolderKanban,
   Gauge,
   KeyRound,
@@ -44,6 +45,7 @@ const navItems: NavItem[] = [
   { title: "SEO Fixes", href: "/projects/:projectId/fixes", icon: Wrench, requiresProject: true },
   { title: "LSI Keywords", href: "/projects/:projectId/lsi-keywords", icon: ScanSearch, requiresProject: true },
   { title: "Analytics", href: "/projects/:projectId", icon: BarChart3, requiresProject: true },
+  { title: "Plan & Billing", href: "/settings/plan", icon: CreditCard },
   { title: "RBAC Settings", href: "/settings/rbac", icon: KeyRound },
 ];
 

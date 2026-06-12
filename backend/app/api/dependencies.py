@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlmodel import Session, select
 
+from app.core.plans import get_plan
 from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.models.user import User, UserRole
@@ -42,6 +43,28 @@ def get_current_user(
     if user is None:
         raise credentials_exception
     return user
+
+
+def require_feature(feature: str):
+    """Build a dependency that gates an endpoint behind a plan feature.
+
+    Returns the current user when their plan includes `feature`, else 402 so the
+    frontend can prompt an upgrade.
+    """
+
+    def _checker(current_user: User = Depends(get_current_user)) -> User:
+        plan = get_plan(current_user.plan)
+        if feature not in plan.features:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=(
+                    f"Your {plan.name} plan doesn't include this feature. "
+                    "Upgrade your plan to unlock it."
+                ),
+            )
+        return current_user
+
+    return _checker
 
 
 def verify_admin(

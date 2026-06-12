@@ -20,8 +20,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
-from app.api.dependencies import get_current_user
-from app.core.plans import get_plan
+from app.api.dependencies import get_current_user, require_feature
+from app.core.plans import FEATURE_ACTION_PLAN, get_plan
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.user import User
@@ -29,6 +29,7 @@ from app.models.visibility_scan import VisibilityScan
 from app.services.cache_service import get_latest_for_feature, upsert_cached
 from app.services.geo_service import GeoServiceError, geo_service
 from app.services.llm_service import llm_service
+from app.services.quota_service import consume_scan
 from app.services.site_audit_service import run_site_audit
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ def latest_analysis(
 async def run_full_analysis(
     body: RunAnalysisRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature(FEATURE_ACTION_PLAN)),
 ) -> AnalysisReport:
     project = _owned(db, body.project_id, current_user.id)
     plan = get_plan(current_user.plan)
@@ -124,6 +125,7 @@ async def run_full_analysis(
 
     if geo_service.is_configured:
         try:
+            consume_scan(current_user, db)
             prompts = await llm_service.generate_geo_prompts(niche, count=body.prompt_count)
             scan = await geo_service.scan(prompts, project.url, project.name)
 

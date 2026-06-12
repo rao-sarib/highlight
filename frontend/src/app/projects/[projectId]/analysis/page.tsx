@@ -171,6 +171,44 @@ export default function ProjectAnalysisPage() {
 
       {!isRunning && hasReport && report ? (
         <>
+          {/* Unified Highlight Score */}
+          {(() => {
+            const seo = report.seo_health_score ?? 0;
+            const hasSov = report.share_of_voice !== null && report.share_of_voice !== undefined;
+            const sov = report.share_of_voice ?? 0;
+            const highlightScore = Math.round(hasSov ? 0.5 * seo + 0.5 * sov : seo);
+            const grade =
+              highlightScore >= 80 ? "Excellent" : highlightScore >= 55 ? "Good" : "Needs work";
+            return (
+              <section className="overflow-hidden rounded-[1.5rem] border border-border/70 bg-brand-gradient p-6 text-white shadow-glow">
+                <div className="flex flex-wrap items-center justify-between gap-6">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/80">
+                      Highlight Score · combined SEO + GEO
+                    </p>
+                    <p className="mt-2 text-6xl font-semibold tracking-tight">
+                      {highlightScore}
+                      <span className="text-2xl text-white/70">/100</span>
+                    </p>
+                    <p className="mt-1 text-sm text-white/85">{grade}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-6 text-sm">
+                    <div>
+                      <p className="text-white/70">SEO health</p>
+                      <p className="text-2xl font-semibold">{report.seo_health_score ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-white/70">AI Share of Voice</p>
+                      <p className="text-2xl font-semibold">
+                        {hasSov ? `${sov}%` : "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            );
+          })()}
+
           {/* Headline scorecards */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">

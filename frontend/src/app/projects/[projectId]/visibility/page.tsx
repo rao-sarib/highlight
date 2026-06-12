@@ -11,12 +11,23 @@ import {
   MinusCircle,
   RefreshCcw,
   Sparkles,
+  TrendingUp,
   Trophy,
   XCircle,
 } from "lucide-react";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
+
+interface ScanHistoryEntry {
+  id: string;
+  keyword: string;
+  share_of_voice: number;
+  cited_count: number;
+  prompt_count: number;
+  created_at: string;
+}
 
 interface EngineAnswer {
   engine: string;
@@ -107,10 +118,20 @@ export default function ProjectVisibilityPage() {
   const params = useParams<{ projectId: string }>();
   const [keyword, setKeyword] = useState("");
   const [result, setResult] = useState<VisibilityResponse | null>(null);
+  const [history, setHistory] = useState<ScanHistoryEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Auto-restore the most recent scan on open (no new API call).
+  const loadHistory = async () => {
+    try {
+      const res = await api.get<ScanHistoryEntry[]>(`/visibility/history/${params.projectId}`);
+      setHistory(res.data);
+    } catch {
+      // none yet
+    }
+  };
+
+  // Auto-restore the most recent scan + the trend history on open (no new scan).
   useEffect(() => {
     const restore = async () => {
       try {
@@ -125,8 +146,19 @@ export default function ProjectVisibilityPage() {
         // none yet
       }
     };
-    if (params.projectId) void restore();
+    if (params.projectId) {
+      void restore();
+      void loadHistory();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.projectId]);
+
+  const trendData = [...history]
+    .reverse()
+    .map((h) => ({
+      date: new Date(h.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      sov: h.share_of_voice,
+    }));
 
   const runScan = async (forceRefresh: boolean) => {
     setErrorMessage("");
@@ -139,6 +171,7 @@ export default function ProjectVisibilityPage() {
         force_refresh: forceRefresh,
       });
       setResult(response.data);
+      void loadHistory();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to run the scan.");
     } finally {
@@ -215,6 +248,39 @@ export default function ProjectVisibilityPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+      ) : null}
+
+      {!isSubmitting && trendData.length >= 2 ? (
+        <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold text-foreground">Share of Voice over time</h2>
+          </div>
+          <div className="mt-4 h-56 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trendData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="sovFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="date" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} width={36} />
+                <Tooltip
+                  contentStyle={{
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: 12,
+                    fontSize: 12,
+                  }}
+                  formatter={(v: number) => [`${v}%`, "Share of Voice"]}
+                />
+                <Area type="monotone" dataKey="sov" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#sovFill)" />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </section>
       ) : null}

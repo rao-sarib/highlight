@@ -12,6 +12,7 @@ import {
   LogOut,
   PenTool,
   RefreshCcw,
+  Rocket,
   ScanSearch,
   Sparkles,
   Target,
@@ -33,6 +34,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: BarChart3 },
   { title: "Projects", href: "/projects", icon: FolderKanban },
+  { title: "Full Analysis", href: "/projects/:projectId/analysis", icon: Rocket, requiresProject: true },
   { title: "Prompt Optimization", href: "/projects/:projectId/prompts", icon: Sparkles, requiresProject: true },
   { title: "Content Generation", href: "/projects/:projectId/content-gen", icon: PenTool, requiresProject: true },
   { title: "AI Visibility", href: "/projects/:projectId/visibility", icon: Gauge, requiresProject: true },

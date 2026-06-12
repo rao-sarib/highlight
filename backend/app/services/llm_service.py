@@ -124,6 +124,71 @@ class LLMService:
             raise LLMServiceError("OpenAI did not return usable GEO prompts.")
         return prompts[:count]
 
+    async def generate_action_plan(
+        self,
+        niche: str,
+        seo_health: float | None,
+        top_issues: list[dict[str, Any]],
+        gap_prompts: list[str],
+        cited_prompts: list[str],
+        competitors: list[str],
+    ) -> list[dict[str, Any]]:
+        """Produce a prioritized SEO+GEO action plan from the analysis signals.
+
+        Returns a list of {priority:int, category, title, detail, effort, impact,
+        prompts_targeted:list[str]}.
+        """
+        context = {
+            "niche": niche or "unknown",
+            "seo_health_score": seo_health,
+            "top_on_page_issues": top_issues[:8],
+            "prompts_where_brand_is_absent": gap_prompts[:8],
+            "prompts_where_brand_is_cited": cited_prompts[:8],
+            "competitors_cited_in_ai_answers": competitors[:8],
+        }
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=0.4,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a senior SEO + GEO (Generative Engine Optimization) strategist. "
+                        "Given an analysis of a website, produce a prioritized, concrete action "
+                        "plan to (a) improve on-page SEO and (b) get the brand cited in AI answer "
+                        "engines for the prompts where it is currently absent. Each item must be "
+                        "specific and doable by a semi-technical user. Return ONLY valid JSON: "
+                        '{"actions":[{"priority":1,"category":"geo|seo|content|backlinks",'
+                        '"title":"...","detail":"...","effort":"low|medium|high",'
+                        '"impact":"low|medium|high","prompts_targeted":["..."]}]}. '
+                        "Order by priority (1 = do first). Return 5-8 actions."
+                    ),
+                },
+                {"role": "user", "content": json.dumps(context, ensure_ascii=True, default=str)},
+            ],
+        )
+        payload = self._safe_json_object((response.choices[0].message.content or "").strip())
+        actions: list[dict[str, Any]] = []
+        for item in payload.get("actions", []):
+            if not isinstance(item, dict) or not str(item.get("title", "")).strip():
+                continue
+            actions.append(
+                {
+                    "priority": int(item.get("priority", len(actions) + 1)),
+                    "category": str(item.get("category", "geo")).strip().lower(),
+                    "title": str(item.get("title", "")).strip(),
+                    "detail": str(item.get("detail", "")).strip(),
+                    "effort": str(item.get("effort", "medium")).strip().lower(),
+                    "impact": str(item.get("impact", "medium")).strip().lower(),
+                    "prompts_targeted": [
+                        str(p).strip() for p in item.get("prompts_targeted", []) if str(p).strip()
+                    ][:5],
+                }
+            )
+        actions.sort(key=lambda a: a["priority"])
+        return actions[:8]
+
     async def detect_niche(self, samples: list[str]) -> str:
         """Infer a site's niche/category from sampled titles, headings, text."""
         joined = " | ".join(s.strip() for s in samples if s and s.strip())[:3500]

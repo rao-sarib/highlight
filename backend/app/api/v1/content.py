@@ -18,6 +18,8 @@ from app.db.session import get_db
 from app.models.content import Content, ContentStatus, ContentType
 from app.models.project import Project
 from app.models.user import User
+from app.services.llm_service import llm_service
+from app.services.rag_service import rag_service
 from app.temporal.workflows.audit_workflow import AuditWorkflow, AuditWorkflowInput
 
 router = APIRouter(prefix="/content", tags=["Content"])
@@ -101,6 +103,45 @@ async def generate_content(
         content_type=body.content_type,
         status="started",
     )
+
+
+class DirectContentRequest(BaseModel):
+    project_id: uuid.UUID
+    topic: str = Field(min_length=2, max_length=512)
+    content_type: ContentType = ContentType.GEO
+
+
+@router.post("/direct", response_model=ContentRead, summary="Generate content now (no workflow)")
+async def generate_content_direct(
+    body: DirectContentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ContentRead:
+    """Synchronously generate RAG-grounded content and save it.
+
+    Used to 'close the loop' from the Action Plan / Visibility gaps — e.g. create
+    GEO content (direct answer + FAQ + schema) for a prompt the brand is not cited
+    for. Works without the Temporal worker.
+    """
+    project = _get_owned_project_or_404(db, body.project_id, current_user.id)
+    topic = body.topic.strip()
+    context_chunks = await rag_service.search_similar(project.id, topic, db=db, top_k=5)
+    generated_text = await llm_service.generate_content(
+        topic=topic,
+        context_chunks=context_chunks,
+        content_type=body.content_type.value,
+    )
+    content = Content(
+        project_id=project.id,
+        topic=topic,
+        generated_text=generated_text,
+        content_type=body.content_type,
+        status=ContentStatus.DRAFT,
+    )
+    db.add(content)
+    db.commit()
+    db.refresh(content)
+    return ContentRead.model_validate(content)
 
 
 @router.get("/project/{project_id}", response_model=list[ContentRead], summary="List generated content")

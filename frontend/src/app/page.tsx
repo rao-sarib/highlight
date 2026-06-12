@@ -103,6 +103,49 @@ const spotlight = [
   { icon: Zap, title: "Automated SEO Fixes", body: "Workflows inspect pages and suggest practical, ready-to-apply fixes." },
 ];
 
+const faqs = [
+  {
+    q: "What is Generative Engine Optimization (GEO)?",
+    a: "GEO is the practice of getting your brand mentioned and cited by AI answer engines like ChatGPT, Perplexity, and Google's AI Overviews when people ask questions in your category. Highlight measures your AI Share of Voice across these engines and generates the content that earns citations.",
+  },
+  {
+    q: "How does Highlight measure AI visibility?",
+    a: "Highlight generates the real buyer questions people ask AI assistants in your niche, sends each to live engines (Perplexity, ChatGPT, and Gemini when configured), and detects whether your domain or brand is cited. The result is an AI Share of Voice score with a per-engine breakdown and the competitors cited instead.",
+  },
+  {
+    q: "Does Highlight do traditional SEO too?",
+    a: "Yes. Highlight crawls your whole website, audits every page for on-page SEO issues (titles, meta descriptions, headings, thin content, image alt text), scores your site health, and uses AI to write specific fixes — alongside the GEO features, in one workspace.",
+  },
+  {
+    q: "Can Highlight create content to improve my AI citations?",
+    a: "Yes. For the prompts where you're not cited, Highlight generates GEO-optimized content — a direct answer, citable key facts, an FAQ, and FAQPage schema — designed to be quoted by AI engines. Publish it and re-scan to watch your share of voice climb.",
+  },
+  {
+    q: "Which AI engines does Highlight check?",
+    a: "Perplexity and ChatGPT (OpenAI) out of the box, plus Google Gemini when a Gemini API key is configured. Each scan shows a per-engine breakdown so you can see exactly where you win and lose citations.",
+  },
+];
+
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const appJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Highlight",
+  applicationCategory: "BusinessApplication",
+  description:
+    "AI SEO & GEO platform that measures whether AI answer engines cite your brand, audits on-page SEO across your whole site, and generates content that wins AI citations.",
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+};
+
 export default function HomePage() {
   return (
     <main className="relative min-h-screen overflow-x-clip bg-background text-foreground">
@@ -453,6 +496,41 @@ export default function HomePage() {
             </div>
           </Reveal>
         </section>
+
+        {/* ── FAQ (also exposed as FAQPage schema for AI engines) ── */}
+        <section id="faq" className="py-16 sm:py-24">
+          <Reveal className="reveal mx-auto max-w-3xl text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-primary">FAQ</p>
+            <h2 className="mt-4 font-display text-3xl font-semibold tracking-tight sm:text-4xl">
+              Questions about AI SEO &amp; GEO
+            </h2>
+            <p className="mt-3 text-base leading-7 text-muted-foreground">
+              The answers below are also published as structured data — so the AI engines we
+              optimize for can cite this page too.
+            </p>
+          </Reveal>
+          <div className="mx-auto mt-10 max-w-3xl divide-y divide-border/60 rounded-[1.5rem] border border-border/60 bg-card/60">
+            {faqs.map((faq) => (
+              <details key={faq.q} className="group px-6 py-5">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left text-base font-semibold text-foreground">
+                  {faq.q}
+                  <span className="text-muted-foreground transition group-open:rotate-45">+</span>
+                </summary>
+                <p className="mt-3 text-sm leading-7 text-muted-foreground">{faq.a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        {/* Structured data: helps search + AI engines cite this page. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(appJsonLd) }}
+        />
 
         {/* ── Footer ─────────────────────────────────────────── */}
         <footer className="flex flex-col gap-3 border-t border-border/60 py-8 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">

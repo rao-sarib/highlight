@@ -17,9 +17,38 @@ const sora = Sora({
 });
 
 export const metadata: Metadata = {
-  title: "Highlight — AI SEO & GEO Platform",
+  metadataBase: new URL("https://highlight-fyp.netlify.app"),
+  title: {
+    default: "Highlight — AI SEO & GEO Platform",
+    template: "%s · Highlight",
+  },
   description:
-    "AI-powered SEO audits, prompt optimization, RAG content workflows, and answer-engine visibility — in one modern workspace.",
+    "Highlight measures whether AI answer engines (ChatGPT, Perplexity, Gemini) cite your brand, audits your whole site for on-page SEO, and generates the GEO content that wins citations — in one workspace.",
+  keywords: [
+    "Generative Engine Optimization",
+    "GEO",
+    "AI SEO",
+    "AI visibility",
+    "ChatGPT citations",
+    "Perplexity SEO",
+    "answer engine optimization",
+    "AI share of voice",
+  ],
+  authors: [{ name: "Highlight" }],
+  openGraph: {
+    type: "website",
+    siteName: "Highlight",
+    title: "Highlight — Get cited by AI answer engines",
+    description:
+      "Measure your AI Share of Voice across ChatGPT, Perplexity & Gemini, fix on-page SEO across your whole site, and generate GEO content that earns citations.",
+    url: "/",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Highlight — AI SEO & GEO Platform",
+    description:
+      "See whether AI engines cite your brand, then generate the content that wins those citations.",
+  },
 };
 
 // Applied before paint to avoid a flash of the wrong theme.

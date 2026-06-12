@@ -75,6 +75,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS plan VARCHAR(32) NOT NULL DEFAULT 'agency'",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS scans_used INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS scans_period VARCHAR(7) NOT NULL DEFAULT ''",
+            # Visibility scans: multi-engine breakdown (added in the multi-engine upgrade).
+            "ALTER TABLE visibility_scans ADD COLUMN IF NOT EXISTS engines_used JSON NOT NULL DEFAULT '[]'",
+            "ALTER TABLE visibility_scans ADD COLUMN IF NOT EXISTS per_engine JSON NOT NULL DEFAULT '[]'",
         ):
             conn.execute(text(ddl))
 

@@ -33,9 +33,12 @@ class VisibilityScan(SQLModel, table=True):
     cited_count: int = Field(default=0, nullable=False)
     in_sources_count: int = Field(default=0, nullable=False)
     prompt_count: int = Field(default=0, nullable=False)
-    # Per-prompt details and aggregated competitor counts as JSON blobs.
+    # Per-prompt details (with per-engine breakdown), competitor counts,
+    # engines used, and per-engine share-of-voice, as JSON blobs.
     results: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     top_competitors: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    engines_used: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    per_engine: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         nullable=False,

@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # Get key at https://www.perplexity.ai/settings/api
     PERPLEXITY_API_KEY: str = ""
 
+    # Google Gemini API (optional) — adds Gemini as a 3rd AI-visibility engine
+    # with Google Search grounding. Get key at https://aistudio.google.com/apikey
+    GEMINI_API_KEY: str = ""
+
     # Google Analytics 4 Data API — service account JSON key file path.
     # Create a service account in Google Cloud Console, enable the
     # "Google Analytics Data API", download its JSON key, and point this

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -18,8 +18,8 @@ import {
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
 
-interface PromptResult {
-  prompt: string;
+interface EngineAnswer {
+  engine: string;
   status: "cited" | "in_sources" | "absent" | "error";
   answer: string;
   citations: string[];
@@ -29,9 +29,25 @@ interface PromptResult {
   error: string | null;
 }
 
+interface PromptResult {
+  prompt: string;
+  status: "cited" | "in_sources" | "absent" | "error";
+  engines: EngineAnswer[];
+  competitor_domains: string[];
+}
+
 interface CompetitorEntry {
   domain: string;
   count: number;
+}
+
+interface EngineSummary {
+  engine: string;
+  label: string;
+  share_of_voice: number;
+  cited: number;
+  in_sources: number;
+  prompts: number;
 }
 
 interface VisibilityResponse {
@@ -42,6 +58,8 @@ interface VisibilityResponse {
   cited_count: number;
   in_sources_count: number;
   prompt_count: number;
+  engines_used: string[];
+  per_engine: EngineSummary[];
   results: PromptResult[];
   top_competitors: CompetitorEntry[];
   scored_by: string;
@@ -79,12 +97,36 @@ const STATUS_META: Record<
   },
 };
 
+const ENGINE_LABEL: Record<string, string> = {
+  perplexity: "Perplexity",
+  openai: "ChatGPT",
+  gemini: "Gemini",
+};
+
 export default function ProjectVisibilityPage() {
   const params = useParams<{ projectId: string }>();
   const [keyword, setKeyword] = useState("");
   const [result, setResult] = useState<VisibilityResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Auto-restore the most recent scan on open (no new API call).
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const response = await api.get<VisibilityResponse | null>(
+          `/visibility/latest/${params.projectId}`,
+        );
+        if (response.data) {
+          setResult(response.data);
+          setKeyword(response.data.keyword);
+        }
+      } catch {
+        // none yet
+      }
+    };
+    if (params.projectId) void restore();
+  }, [params.projectId]);
 
   const runScan = async (forceRefresh: boolean) => {
     setErrorMessage("");
@@ -117,7 +159,7 @@ export default function ProjectVisibilityPage() {
     <FeaturePageFrame
       eyebrow="AI Visibility · GEO"
       title="AI Share of Voice"
-      description="Asks real buyer questions to a live AI answer engine (Perplexity) and measures how often your brand is cited in the answers — plus which competitors get cited instead."
+      description="Asks real buyer questions to multiple live AI answer engines (Perplexity + ChatGPT, and Gemini when configured) and measures how often your brand is cited — with a per-engine breakdown and the competitors cited instead."
     >
       <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
         <form className="grid gap-4 lg:grid-cols-[1fr_auto]" onSubmit={handleSubmit}>
@@ -232,6 +274,33 @@ export default function ProjectVisibilityPage() {
               ) : null}
             </div>
 
+            {result.per_engine.length > 0 ? (
+              <div className="rounded-[1.5rem] border border-border/70 bg-card p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  By engine
+                </p>
+                <div className="mt-4 grid gap-3.5">
+                  {result.per_engine.map((eng) => (
+                    <div key={eng.engine}>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium text-foreground">{eng.label}</span>
+                        <span className="font-semibold text-foreground">{eng.share_of_voice}%</span>
+                      </div>
+                      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-brand-gradient"
+                          style={{ width: `${Math.min(eng.share_of_voice, 100)}%` }}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {eng.cited}/{eng.prompts} prompts cited
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             {result.top_competitors.length > 0 ? (
               <div className="rounded-[1.5rem] border border-border/70 bg-card p-5 shadow-sm">
                 <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
@@ -277,53 +346,68 @@ export default function ProjectVisibilityPage() {
                     </span>
                   </div>
 
-                  {item.status === "error" ? (
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      {item.error ?? "The engine query failed."}
-                    </p>
-                  ) : (
-                    <>
-                      <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-7 text-muted-foreground">
-                        {item.answer || "No answer returned."}
-                      </p>
-
-                      {item.matched_urls.length > 0 ? (
-                        <div className="mt-4 rounded-xl border border-success/30 bg-success/10 px-4 py-3">
-                          <p className="text-xs font-semibold text-success">
-                            Your pages in this answer's sources:
-                          </p>
-                          {item.matched_urls.map((url) => (
-                            <a
-                              key={url}
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-1 flex items-center gap-1.5 text-xs text-success hover:underline"
-                            >
-                              <ExternalLink className="h-3 w-3 shrink-0" />
-                              <span className="truncate">{url}</span>
-                            </a>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {item.competitor_domains.length > 0 ? (
-                        <div className="mt-4 flex flex-wrap items-center gap-1.5">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Cited instead:
-                          </span>
-                          {item.competitor_domains.slice(0, 6).map((domain) => (
-                            <span
-                              key={domain}
-                              className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs text-foreground"
-                            >
-                              {domain}
+                  <div className="mt-4 grid gap-2.5">
+                    {item.engines.map((eng) => {
+                      const em = STATUS_META[eng.status] ?? STATUS_META.error;
+                      const EIcon = em.Icon;
+                      return (
+                        <div
+                          key={eng.engine}
+                          className="rounded-xl border border-border bg-background p-3"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              {ENGINE_LABEL[eng.engine] ?? eng.engine}
                             </span>
-                          ))}
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${em.chip}`}
+                            >
+                              <EIcon className={`h-3 w-3 ${em.iconClass}`} />
+                              {em.label}
+                            </span>
+                          </div>
+                          {eng.status === "error" ? (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {eng.error ?? "Query failed."}
+                            </p>
+                          ) : (
+                            <>
+                              <p className="mt-2 line-clamp-3 text-xs leading-6 text-muted-foreground">
+                                {eng.answer || "No answer returned."}
+                              </p>
+                              {eng.matched_urls.length > 0 ? (
+                                <a
+                                  href={eng.matched_urls[0]}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="mt-2 flex items-center gap-1.5 text-xs text-success hover:underline"
+                                >
+                                  <ExternalLink className="h-3 w-3 shrink-0" />
+                                  <span className="truncate">Your page in sources: {eng.matched_urls[0]}</span>
+                                </a>
+                              ) : null}
+                            </>
+                          )}
                         </div>
-                      ) : null}
-                    </>
-                  )}
+                      );
+                    })}
+                  </div>
+
+                  {item.competitor_domains.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        Cited instead:
+                      </span>
+                      {item.competitor_domains.slice(0, 6).map((domain) => (
+                        <span
+                          key={domain}
+                          className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs text-foreground"
+                        >
+                          {domain}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </article>
               );
             })}

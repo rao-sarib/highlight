@@ -44,9 +44,9 @@ class VisibilityRequest(BaseModel):
     force_refresh: bool = False
 
 
-class PromptResult(BaseModel):
-    prompt: str
-    status: str  # cited | in_sources | absent | error
+class EngineAnswerModel(BaseModel):
+    engine: str
+    status: str
     answer: str = ""
     citations: list[str] = []
     matched_urls: list[str] = []
@@ -55,9 +55,25 @@ class PromptResult(BaseModel):
     error: str | None = None
 
 
+class PromptResult(BaseModel):
+    prompt: str
+    status: str  # cited | in_sources | absent | error
+    engines: list[EngineAnswerModel] = []
+    competitor_domains: list[str] = []
+
+
 class CompetitorEntry(BaseModel):
     domain: str
     count: int
+
+
+class EngineSummary(BaseModel):
+    engine: str
+    label: str
+    share_of_voice: float
+    cited: int
+    in_sources: int
+    prompts: int
 
 
 class VisibilityResponse(BaseModel):
@@ -68,9 +84,11 @@ class VisibilityResponse(BaseModel):
     cited_count: int
     in_sources_count: int
     prompt_count: int
+    engines_used: list[str] = []
+    per_engine: list[EngineSummary] = []
     results: list[PromptResult]
     top_competitors: list[CompetitorEntry]
-    scored_by: str = "perplexity_live_scan"
+    scored_by: str = "multi_engine_live_scan"
     cached: bool = False
     scanned_at: datetime
 
@@ -112,6 +130,8 @@ def _scan_to_response(
         cited_count=scan.cited_count,
         in_sources_count=scan.in_sources_count,
         prompt_count=scan.prompt_count,
+        engines_used=scan.engines_used or [],
+        per_engine=[EngineSummary(**item) for item in (scan.per_engine or [])],
         results=[PromptResult(**item) for item in scan.results],
         top_competitors=[CompetitorEntry(**item) for item in scan.top_competitors],
         cached=cached,
@@ -188,12 +208,42 @@ async def calculate_visibility_score(
         prompt_count=scan_result.prompt_count,
         results=[item.to_dict() for item in scan_result.results],
         top_competitors=scan_result.top_competitors,
+        engines_used=scan_result.engines_used,
+        per_engine=scan_result.per_engine,
     )
     db.add(scan)
+
+    # Surface the latest visibility score on the project for the dashboard.
+    if project is not None:
+        project.ai_visibility_score = scan_result.share_of_voice
+        db.add(project)
+
     db.commit()
     db.refresh(scan)
 
     return _scan_to_response(scan, body.project_id, cached=False)
+
+
+@router.get(
+    "/latest/{project_id}",
+    response_model=VisibilityResponse | None,
+    summary="Restore the most recent visibility scan",
+)
+def latest_scan(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> VisibilityResponse | None:
+    _get_owned_project_or_404(db, project_id, current_user.id)
+    scan = db.exec(
+        select(VisibilityScan)
+        .where(VisibilityScan.project_id == project_id)
+        .order_by(VisibilityScan.created_at.desc())
+        .limit(1)
+    ).first()
+    if scan is None:
+        return None
+    return _scan_to_response(scan, project_id, cached=True)
 
 
 @router.get(

@@ -1,16 +1,16 @@
 """
-GEO (Generative Engine Optimisation) service.
+GEO (Generative Engine Optimisation) service — multi-engine AI visibility.
 
-Measures real AI-engine visibility: queries Perplexity with several
-brand-neutral prompts a buyer might ask, then detects whether the project's
-domain/brand is cited in each answer. Produces an "AI Share of Voice" score
-plus the competitor domains that got cited instead.
+For a set of brand-neutral buyer prompts, asks each available AI answer engine
+and detects whether the project's domain/brand is cited:
 
-Cost controls (the Perplexity budget is small):
-  • model "sonar" with search_context_size=low  (~$0.005/request)
-  • max_tokens capped per answer
-  • prompts per scan clamped by the API layer (default 4, max 6)
-  • results are cached in the visibility_scans table by the API layer
+  • Perplexity  (sonar, returns citations)            — needs PERPLEXITY_API_KEY
+  • OpenAI      (gpt-4o-search-preview, web-grounded)  — needs OPENAI_API_KEY
+  • Gemini      (gemini + Google Search grounding)     — needs GEMINI_API_KEY (optional)
+
+Produces an overall "AI Share of Voice", a per-engine breakdown, and the
+competitor domains cited instead. Cost is bounded: low search context, capped
+answer tokens, small prompt counts, and the API layer caches scans for 24h.
 """
 
 from __future__ import annotations
@@ -27,15 +27,31 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Engines
+ENGINE_PERPLEXITY = "perplexity"
+ENGINE_OPENAI = "openai"
+ENGINE_GEMINI = "gemini"
+
+ENGINE_LABELS = {
+    ENGINE_PERPLEXITY: "Perplexity",
+    ENGINE_OPENAI: "ChatGPT (OpenAI)",
+    ENGINE_GEMINI: "Gemini",
+}
+
 PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions"
 PERPLEXITY_MODEL = "sonar"
-PERPLEXITY_TIMEOUT = 45
+OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_SEARCH_MODEL = "gpt-4o-search-preview"
+GEMINI_API_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    "gemini-2.0-flash:generateContent"
+)
+ENGINE_TIMEOUT = 45
 MAX_ANSWER_TOKENS = 300
+MAX_CONCURRENCY = 5
 
-# Markers like [1][4] that Perplexity inserts to reference its citations.
 _REFERENCE_MARKER = re.compile(r"\[(\d{1,2})\]")
-
-# Words too generic to count as a "brand mention" on their own.
+_MD_LINK = re.compile(r"\]\((https?://[^)\s]+)\)")
 _GENERIC_NAME_WORDS = {
     "the", "and", "for", "with", "app", "site", "web", "website", "online",
     "tool", "tools", "blog", "shop", "store", "official", "group", "tech",
@@ -46,14 +62,12 @@ _GENERIC_NAME_WORDS = {
 
 
 class GeoServiceError(RuntimeError):
-    """Raised when the GEO scan cannot run at all (e.g. missing API key)."""
+    """Raised when a GEO scan cannot run at all."""
 
 
 @dataclass(slots=True)
-class PromptScanResult:
-    """Outcome of testing one prompt against a live AI engine."""
-
-    prompt: str
+class EngineAnswer:
+    engine: str
     status: str = "absent"  # cited | in_sources | absent | error
     answer: str = ""
     citations: list[str] = field(default_factory=list)
@@ -67,138 +81,185 @@ class PromptScanResult:
 
 
 @dataclass(slots=True)
-class GeoScanResult:
-    """Aggregate of a full multi-prompt visibility scan."""
+class PromptScanResult:
+    prompt: str
+    status: str = "absent"  # aggregated across engines
+    engines: list[EngineAnswer] = field(default_factory=list)
+    competitor_domains: list[str] = field(default_factory=list)
 
+    def to_dict(self) -> dict:
+        return {
+            "prompt": self.prompt,
+            "status": self.status,
+            "engines": [e.to_dict() for e in self.engines],
+            "competitor_domains": self.competitor_domains,
+        }
+
+
+@dataclass(slots=True)
+class GeoScanResult:
     share_of_voice: float
     cited_count: int
     in_sources_count: int
     prompt_count: int
+    engines_used: list[str]
+    per_engine: list[dict]
     results: list[PromptScanResult]
-    top_competitors: list[dict]  # [{"domain": str, "count": int}]
+    top_competitors: list[dict]
 
 
 def _host_of(url: str) -> str:
     try:
-        host = urlparse(url).netloc.lower()
+        return urlparse(url).netloc.lower().removeprefix("www.")
     except Exception:
         return ""
-    return host.removeprefix("www.")
 
 
 def _same_site(project_host: str, candidate_host: str) -> bool:
-    """Exact host or subdomain match — avoids 'crm.com' matching 'freecrm.com'."""
     if not project_host or not candidate_host:
         return False
     return candidate_host == project_host or candidate_host.endswith(f".{project_host}")
 
 
 def brand_terms_from(project_name: str, project_url: str) -> list[str]:
-    """Derive distinctive brand terms to look for in answer text."""
     terms: list[str] = []
-
     cleaned_name = project_name.strip()
     if cleaned_name and cleaned_name.lower() not in _GENERIC_NAME_WORDS:
         terms.append(cleaned_name)
-
     for token in re.findall(r"[A-Za-z][A-Za-z0-9'-]+", cleaned_name):
         lowered = token.lower()
         if len(lowered) >= 4 and lowered not in _GENERIC_NAME_WORDS:
             terms.append(token)
-
     host = _host_of(project_url)
     root = host.split(".")[0] if host else ""
     if len(root) >= 4 and root not in _GENERIC_NAME_WORDS:
         terms.append(root)
-
-    # Dedupe, preserve order, keep it small.
     seen: set[str] = set()
-    unique_terms: list[str] = []
+    unique: list[str] = []
     for term in terms:
         key = term.lower()
         if key not in seen:
             seen.add(key)
-            unique_terms.append(term)
-    return unique_terms[:6]
+            unique.append(term)
+    return unique[:6]
 
 
 def _brand_in_text(answer: str, brand_terms: list[str]) -> bool:
-    for term in brand_terms:
-        if re.search(rf"\b{re.escape(term)}\b", answer, flags=re.IGNORECASE):
-            return True
-    return False
+    return any(
+        re.search(rf"\b{re.escape(term)}\b", answer, flags=re.IGNORECASE) for term in brand_terms
+    )
 
 
 @dataclass(slots=True)
 class GeoService:
-    """Runs live AI-engine visibility scans through Perplexity."""
+    """Runs multi-engine AI-visibility scans."""
 
-    api_key: str = field(default_factory=lambda: settings.PERPLEXITY_API_KEY.strip())
+    perplexity_key: str = field(default_factory=lambda: settings.PERPLEXITY_API_KEY.strip())
+    openai_key: str = field(default_factory=lambda: settings.OPENAI_API_KEY.strip())
+    gemini_key: str = field(default_factory=lambda: settings.GEMINI_API_KEY.strip())
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.api_key)
+        return bool(self.perplexity_key or self.openai_key)
 
-    async def _query_engine(self, client: httpx.AsyncClient, prompt: str) -> tuple[str, list[str]]:
-        """One Perplexity query → (answer_text, citation_urls). Raises on failure."""
-        response = await client.post(
+    def available_engines(self) -> list[str]:
+        engines: list[str] = []
+        if self.perplexity_key:
+            engines.append(ENGINE_PERPLEXITY)
+        if self.openai_key:
+            engines.append(ENGINE_OPENAI)
+        if self.gemini_key:
+            engines.append(ENGINE_GEMINI)
+        return engines
+
+    # ── Per-engine queries → (answer_text, citation_urls) ────────────────────
+    async def _q_perplexity(self, client: httpx.AsyncClient, prompt: str) -> tuple[str, list[str]]:
+        resp = await client.post(
             PERPLEXITY_API_URL,
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
+            headers={"Authorization": f"Bearer {self.perplexity_key}", "Content-Type": "application/json"},
             json={
                 "model": PERPLEXITY_MODEL,
                 "max_tokens": MAX_ANSWER_TOKENS,
                 "web_search_options": {"search_context_size": "low"},
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a helpful AI assistant. Answer concisely and factually, "
-                            "naming the specific products, brands, or websites you recommend, "
-                            "and cite your sources."
-                        ),
-                    },
+                    {"role": "system", "content": "Answer concisely and factually, naming the specific products/brands/sites you recommend, and cite sources."},
                     {"role": "user", "content": prompt},
                 ],
             },
         )
-        response.raise_for_status()
-        data = response.json()
-
+        resp.raise_for_status()
+        data = resp.json()
         answer = str(data.get("choices", [{}])[0].get("message", {}).get("content", ""))
-
-        # The API exposes sources as both `citations` (URL list) and
-        # `search_results` (objects). Merge them defensively since the
-        # schema has shifted between versions.
-        citations: list[str] = [str(url) for url in data.get("citations", []) if url]
+        citations = [str(u) for u in data.get("citations", []) if u]
         for item in data.get("search_results", []) or []:
             url = str(item.get("url", "")).strip()
             if url and url not in citations:
                 citations.append(url)
         return answer, citations
 
-    def _evaluate_prompt(
-        self,
-        prompt: str,
-        answer: str,
-        citations: list[str],
-        project_host: str,
-        brand_terms: list[str],
-    ) -> PromptScanResult:
-        """Decide cited / in_sources / absent for one answer."""
-        referenced_indexes = {int(m) for m in _REFERENCE_MARKER.findall(answer)}
+    async def _q_openai(self, client: httpx.AsyncClient, prompt: str) -> tuple[str, list[str]]:
+        resp = await client.post(
+            OPENAI_API_URL,
+            headers={"Authorization": f"Bearer {self.openai_key}", "Content-Type": "application/json"},
+            json={
+                "model": OPENAI_SEARCH_MODEL,
+                "max_tokens": MAX_ANSWER_TOKENS,
+                "messages": [
+                    {"role": "user", "content": f"{prompt} Name the specific products or websites you recommend."},
+                ],
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        message = data.get("choices", [{}])[0].get("message", {})
+        answer = str(message.get("content", ""))
+        # Citations come inline as markdown links and/or as annotations.
+        citations = _MD_LINK.findall(answer)
+        for ann in message.get("annotations", []) or []:
+            url = str((ann.get("url_citation") or {}).get("url", "")).strip()
+            if url and url not in citations:
+                citations.append(url)
+        return answer, citations
 
-        matched_urls = [url for url in citations if _same_site(project_host, _host_of(url))]
-        referenced_urls = [
-            citations[i - 1]
-            for i in sorted(referenced_indexes)
-            if 1 <= i <= len(citations)
-        ]
-        matched_referenced = [
-            url for url in referenced_urls if _same_site(project_host, _host_of(url))
-        ]
+    async def _q_gemini(self, client: httpx.AsyncClient, prompt: str) -> tuple[str, list[str]]:
+        resp = await client.post(
+            f"{GEMINI_API_URL}?key={self.gemini_key}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": f"{prompt} Name the specific products or websites you recommend."}]}],
+                "tools": [{"google_search": {}}],
+                "generationConfig": {"maxOutputTokens": MAX_ANSWER_TOKENS},
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        candidate = (data.get("candidates") or [{}])[0]
+        parts = (candidate.get("content") or {}).get("parts") or []
+        answer = " ".join(str(p.get("text", "")) for p in parts).strip()
+        citations: list[str] = []
+        grounding = candidate.get("groundingMetadata") or {}
+        for chunk in grounding.get("groundingChunks") or []:
+            url = str((chunk.get("web") or {}).get("uri", "")).strip()
+            if url and url not in citations:
+                citations.append(url)
+        return answer, citations
+
+    async def _query(self, engine: str, client: httpx.AsyncClient, prompt: str) -> tuple[str, list[str]]:
+        if engine == ENGINE_PERPLEXITY:
+            return await self._q_perplexity(client, prompt)
+        if engine == ENGINE_OPENAI:
+            return await self._q_openai(client, prompt)
+        if engine == ENGINE_GEMINI:
+            return await self._q_gemini(client, prompt)
+        raise GeoServiceError(f"Unknown engine: {engine}")
+
+    def _evaluate(
+        self, engine: str, answer: str, citations: list[str], project_host: str, brand_terms: list[str]
+    ) -> EngineAnswer:
+        referenced_indexes = {int(m) for m in _REFERENCE_MARKER.findall(answer)}
+        matched_urls = [u for u in citations if _same_site(project_host, _host_of(u))]
+        referenced_urls = [citations[i - 1] for i in sorted(referenced_indexes) if 1 <= i <= len(citations)]
+        matched_referenced = [u for u in referenced_urls if _same_site(project_host, _host_of(u))]
         brand_mentioned = _brand_in_text(answer, brand_terms)
 
         if matched_referenced or brand_mentioned:
@@ -208,87 +269,123 @@ class GeoService:
         else:
             status = "absent"
 
-        # Competitors = domains the engine actually referenced (fall back to
-        # all sources when the answer has no [n] markers), minus our own.
         competitor_pool = referenced_urls or citations
-        competitor_domains: list[str] = []
-        for url in competitor_pool:
-            host = _host_of(url)
-            if host and not _same_site(project_host, host) and host not in competitor_domains:
-                competitor_domains.append(host)
+        competitors: list[str] = []
+        for u in competitor_pool:
+            host = _host_of(u)
+            if host and not _same_site(project_host, host) and host not in competitors:
+                competitors.append(host)
 
-        return PromptScanResult(
-            prompt=prompt,
+        return EngineAnswer(
+            engine=engine,
             status=status,
             answer=answer,
             citations=citations[:8],
             matched_urls=matched_urls[:4],
             brand_mentioned_in_text=brand_mentioned,
-            competitor_domains=competitor_domains[:8],
+            competitor_domains=competitors[:8],
         )
 
-    async def scan(
-        self,
-        prompts: list[str],
-        project_url: str,
-        project_name: str,
-    ) -> GeoScanResult:
-        """Run every prompt against the live engine concurrently and aggregate."""
-        if not self.is_configured:
-            raise GeoServiceError(
-                "PERPLEXITY_API_KEY is not configured — real AI visibility scans need it."
-            )
+    async def scan(self, prompts: list[str], project_url: str, project_name: str) -> GeoScanResult:
+        engines = self.available_engines()
+        if not engines:
+            raise GeoServiceError("No AI engines are configured (need PERPLEXITY_API_KEY or OPENAI_API_KEY).")
 
         project_host = _host_of(project_url)
         brand_terms = brand_terms_from(project_name, project_url)
+        semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
+        tasks: list[tuple[str, str]] = [(prompt, engine) for prompt in prompts for engine in engines]
 
-        async with httpx.AsyncClient(timeout=PERPLEXITY_TIMEOUT) as client:
-            raw_results = await asyncio.gather(
-                *(self._query_engine(client, prompt) for prompt in prompts),
-                return_exceptions=True,
-            )
+        async with httpx.AsyncClient(timeout=ENGINE_TIMEOUT) as client:
+            async def run(prompt: str, engine: str):
+                async with semaphore:
+                    return await self._query(engine, client, prompt)
 
-        results: list[PromptScanResult] = []
-        for prompt, outcome in zip(prompts, raw_results):
+            raw = await asyncio.gather(*(run(p, e) for p, e in tasks), return_exceptions=True)
+
+        # Group answers by prompt.
+        by_prompt: dict[str, list[EngineAnswer]] = {p: [] for p in prompts}
+        for (prompt, engine), outcome in zip(tasks, raw):
             if isinstance(outcome, BaseException):
-                logger.warning("GEO scan prompt failed (%s): %s", prompt, outcome)
-                results.append(
-                    PromptScanResult(prompt=prompt, status="error", error=str(outcome))
-                )
-                continue
-            answer, citations = outcome
-            results.append(
-                self._evaluate_prompt(prompt, answer, citations, project_host, brand_terms)
-            )
+                logger.warning("GEO %s/%s failed: %s", engine, prompt[:40], outcome)
+                by_prompt[prompt].append(EngineAnswer(engine=engine, status="error", error=str(outcome)))
+            else:
+                answer, citations = outcome
+                by_prompt[prompt].append(self._evaluate(engine, answer, citations, project_host, brand_terms))
 
-        scored = [r for r in results if r.status != "error"]
-        if not scored:
-            raise GeoServiceError(
-                "All AI-engine queries failed — check the Perplexity API key/credits."
-            )
-
-        cited = sum(1 for r in scored if r.status == "cited")
-        in_sources = sum(1 for r in scored if r.status == "in_sources")
-        # Full credit for being cited in the answer, half credit for appearing
-        # in the engine's retrieved sources without being cited.
-        share_of_voice = round((cited + 0.5 * in_sources) / len(scored) * 100, 1)
-
+        # Aggregate per prompt + overall + per engine.
+        results: list[PromptScanResult] = []
+        engine_cells: dict[str, list[str]] = {e: [] for e in engines}
         competitor_counter: dict[str, int] = {}
-        for result in scored:
-            for domain in result.competitor_domains:
-                competitor_counter[domain] = competitor_counter.get(domain, 0) + 1
+        cited_cells = in_sources_cells = total_cells = 0
+
+        for prompt in prompts:
+            engine_answers = by_prompt[prompt]
+            prompt_competitors: list[str] = []
+            statuses = []
+            for ea in engine_answers:
+                if ea.status != "error":
+                    engine_cells[ea.engine].append(ea.status)
+                    total_cells += 1
+                    if ea.status == "cited":
+                        cited_cells += 1
+                    elif ea.status == "in_sources":
+                        in_sources_cells += 1
+                statuses.append(ea.status)
+                for d in ea.competitor_domains:
+                    if d not in prompt_competitors:
+                        prompt_competitors.append(d)
+                    competitor_counter[d] = competitor_counter.get(d, 0) + 1
+            # Aggregated prompt status: best across engines.
+            if "cited" in statuses:
+                agg = "cited"
+            elif "in_sources" in statuses:
+                agg = "in_sources"
+            elif all(s == "error" for s in statuses):
+                agg = "error"
+            else:
+                agg = "absent"
+            results.append(
+                PromptScanResult(prompt=prompt, status=agg, engines=engine_answers, competitor_domains=prompt_competitors[:8])
+            )
+
+        if total_cells == 0:
+            raise GeoServiceError("All AI-engine queries failed — check API keys/credits.")
+
+        share_of_voice = round((cited_cells + 0.5 * in_sources_cells) / total_cells * 100, 1)
+
+        per_engine: list[dict] = []
+        for engine in engines:
+            cells = engine_cells[engine]
+            if not cells:
+                continue
+            c = cells.count("cited")
+            s = cells.count("in_sources")
+            per_engine.append({
+                "engine": engine,
+                "label": ENGINE_LABELS.get(engine, engine),
+                "share_of_voice": round((c + 0.5 * s) / len(cells) * 100, 1),
+                "cited": c,
+                "in_sources": s,
+                "prompts": len(cells),
+            })
+
+        # Prompt-level cited count (cited in at least one engine) for headline.
+        prompt_cited = sum(1 for r in results if r.status == "cited")
+        prompt_in_sources = sum(1 for r in results if r.status == "in_sources")
+
         top_competitors = [
-            {"domain": domain, "count": count}
-            for domain, count in sorted(
-                competitor_counter.items(), key=lambda item: (-item[1], item[0])
-            )[:10]
+            {"domain": d, "count": n}
+            for d, n in sorted(competitor_counter.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
         ]
 
         return GeoScanResult(
             share_of_voice=share_of_voice,
-            cited_count=cited,
-            in_sources_count=in_sources,
-            prompt_count=len(scored),
+            cited_count=prompt_cited,
+            in_sources_count=prompt_in_sources,
+            prompt_count=len(prompts),
+            engines_used=engines,
+            per_engine=per_engine,
             results=results,
             top_competitors=top_competitors,
         )

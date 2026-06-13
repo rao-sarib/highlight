@@ -198,6 +198,26 @@
   .btn-brand:hover::after {
     transform: translateX(120%);
   }
+
+  /* Editorial nav link — a fine underline that grows from the left on hover */
+  .link-underline {
+    position: relative;
+  }
+  .link-underline::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -4px;
+    height: 1.5px;
+    width: 100%;
+    transform: scaleX(0);
+    transform-origin: left;
+    background-image: linear-gradient(120deg, hsl(var(--primary)), hsl(var(--accent)));
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .link-underline:hover::after {
+    transform: scaleX(1);
+  }
 }
 
 @layer utilities {

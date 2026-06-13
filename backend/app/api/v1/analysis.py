@@ -126,7 +126,9 @@ async def run_full_analysis(
     if geo_service.is_configured:
         try:
             consume_scan(current_user, db)
-            prompts = await llm_service.generate_geo_prompts(niche, count=body.prompt_count)
+            prompts = await llm_service.generate_geo_prompts(
+                niche, count=body.prompt_count, audience=project.target_audience
+            )
             scan = await geo_service.scan(prompts, project.url, project.name)
 
             db.add(

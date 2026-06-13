@@ -11,6 +11,7 @@ import re
 import uuid
 from collections import Counter
 from datetime import datetime
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -23,6 +24,7 @@ from app.models.embedding import Embedding
 from app.models.project import Project
 from app.models.user import User
 from app.services.cache_service import get_cached, get_latest_for_feature, make_input_key, upsert_cached
+from app.services.project_context import resolve_keyword
 from app.services.scraper_service import scraper_service
 from app.services.serper_service import serper_service
 
@@ -41,8 +43,10 @@ STOP_WORDS = {
 
 class CompetitorBenchmarkRequest(BaseModel):
     project_id: uuid.UUID
-    competitor_url: str = Field(min_length=3, max_length=2083)
-    keyword: str = Field(min_length=2, max_length=255)
+    # Both optional: keyword falls back to the project niche; competitor is
+    # auto-detected from Google SERP for the keyword when omitted.
+    competitor_url: str | None = Field(default=None, max_length=2083)
+    keyword: str | None = Field(default=None, max_length=255)
     force_refresh: bool = False
 
 
@@ -75,6 +79,19 @@ def _get_owned_project_or_404(db: Session, project_id: uuid.UUID, user_id: uuid.
     if project is None or project.owner_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return project
+
+
+async def _auto_detect_competitor(keyword: str, project_url: str) -> str | None:
+    """Pick the top-ranking page for the keyword that isn't the project's own site."""
+    result = await serper_service.search(keyword, num=10)
+    if result.error or not result.organic:
+        return None
+    project_host = urlparse(project_url).netloc.lower().removeprefix("www.")
+    for entry in result.organic:
+        host = urlparse(entry.url).netloc.lower().removeprefix("www.")
+        if host and project_host and host != project_host and project_host not in host and host not in project_host:
+            return entry.url
+    return None
 
 
 def _keyword_density(text: str, keyword: str) -> float:
@@ -130,8 +147,24 @@ async def benchmark_competitor(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_feature(FEATURE_COMPETITORS)),
 ) -> CompetitorBenchmarkResponse:
-    _get_owned_project_or_404(db, body.project_id, current_user.id)
-    input_key = make_input_key(body.competitor_url, body.keyword)
+    project = _get_owned_project_or_404(db, body.project_id, current_user.id)
+
+    # Auto-mode: keyword from niche when omitted (relevance-guarded if manual);
+    # competitor auto-detected from the keyword's SERP when omitted.
+    keyword = await resolve_keyword(project, body.keyword)
+    competitor_url = (body.competitor_url or "").strip()
+    if not competitor_url:
+        competitor_url = await _auto_detect_competitor(keyword, project.url) or ""
+        if not competitor_url:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Couldn't auto-detect a competitor for this keyword. Provide a "
+                    "competitor URL, or ensure SERPER_API_KEY is configured."
+                ),
+            )
+
+    input_key = make_input_key(competitor_url, keyword)
     if not body.force_refresh:
         cached = get_cached(db, body.project_id, FEATURE, input_key)
         if cached is not None:
@@ -146,27 +179,27 @@ async def benchmark_competitor(
     project_text = "\n".join(project_chunks)
 
     # Scrape competitor page for content analysis
-    competitor_page = await scraper_service.scrape_url(body.competitor_url.strip())
+    competitor_page = await scraper_service.scrape_url(competitor_url)
     if competitor_page.error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to scrape competitor URL: {competitor_page.error}",
         )
 
-    project_density = _keyword_density(project_text, body.keyword)
-    competitor_density = _keyword_density(competitor_page.body_text, body.keyword)
+    project_density = _keyword_density(project_text, keyword)
+    competitor_density = _keyword_density(competitor_page.body_text, keyword)
     project_terms = set(_top_terms(project_text, limit=20))
     competitor_terms = _top_terms(competitor_page.body_text, limit=20)
     semantic_gap_terms = [term for term in competitor_terms if term not in project_terms][:10]
 
     # Serper API — fetch real Google SERP rankings for the keyword
-    serp_result = await serper_service.search(body.keyword.strip(), num=10)
+    serp_result = await serper_service.search(keyword, num=10)
     serp_data_available = serp_result.error is None and bool(serp_result.organic)
     competitor_serp_rank = None
     serp_top_results: list[SerpEntry] = []
 
     if serp_data_available:
-        competitor_serp_rank = serper_service.find_url_rank(serp_result, body.competitor_url.strip())
+        competitor_serp_rank = serper_service.find_url_rank(serp_result, competitor_url)
         serp_top_results = [
             SerpEntry(
                 position=r.position,
@@ -179,8 +212,8 @@ async def benchmark_competitor(
 
     response = CompetitorBenchmarkResponse(
         project_id=body.project_id,
-        competitor_url=body.competitor_url.strip(),
-        keyword=body.keyword.strip(),
+        competitor_url=competitor_url,
+        keyword=keyword,
         project_keyword_density=project_density,
         competitor_keyword_density=competitor_density,
         density_gap=round(competitor_density - project_density, 3),

@@ -11,7 +11,8 @@ Project.embeddings →  list[Embedding] (one-to-many, back_populates="project")
 import uuid as _uuid
 from datetime import datetime, timezone
 
-from sqlmodel import Field, Relationship, SQLModel
+from sqlalchemy import JSON
+from sqlmodel import Column, Field, Relationship, SQLModel
 
 
 class Project(SQLModel, table=True):
@@ -37,6 +38,11 @@ class Project(SQLModel, table=True):
     description: str | None = Field(default=None, max_length=2000, nullable=True)
     # Auto-derived during the crawl/audit.
     detected_niche: str | None = Field(default=None, max_length=512, nullable=True)
+    # Seed keywords extracted from the site content during the audit — used to
+    # auto-fill every feature and to validate manual input relevance.
+    detected_keywords: list = Field(
+        default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]")
+    )
     pages_crawled: int = Field(default=0, nullable=False)
     last_crawl_at: datetime | None = Field(default=None, nullable=True)
     # Headline scores surfaced on the dashboard (0-100).

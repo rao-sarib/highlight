@@ -51,6 +51,7 @@ class ProjectRead(BaseModel):
     target_audience: str | None = None
     description: str | None = None
     detected_niche: str | None = None
+    detected_keywords: list[str] = []
     pages_crawled: int = 0
     last_crawl_at: datetime | None = None
     seo_health_score: float | None = None
@@ -127,6 +128,42 @@ def create_project(
     db.commit()
     db.refresh(project)
     return ProjectRead.model_validate(project)
+
+
+class ProjectContext(BaseModel):
+    """Auto-mode context the frontend uses to prefill features."""
+
+    project_id: uuid.UUID
+    niche: str
+    detected_niche: str | None
+    target_audience: str | None
+    keywords: list[str]
+    primary_keyword: str | None
+    has_audit: bool
+
+
+@router.get(
+    "/{project_id}/context",
+    response_model=ProjectContext,
+    summary="Auto-mode context (niche, keywords, audit status)",
+)
+def get_project_context(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ProjectContext:
+    from app.services.project_context import effective_niche, has_audit, primary_keyword
+
+    project = _get_owned_project_or_404(db, project_id, current_user.id)
+    return ProjectContext(
+        project_id=project.id,
+        niche=effective_niche(project),
+        detected_niche=project.detected_niche,
+        target_audience=project.target_audience,
+        keywords=list(project.detected_keywords or []),
+        primary_keyword=primary_keyword(project),
+        has_audit=has_audit(project),
+    )
 
 
 @router.get("/{project_id}", response_model=ProjectRead, summary="Get a project")

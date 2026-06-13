@@ -5,8 +5,10 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { Loader2, RefreshCcw } from "lucide-react";
 
+import { AutoModePanel } from "@/components/global/auto-mode-panel";
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
+import { useProjectContext } from "@/lib/useProjectContext";
 
 interface LsiResponse {
   keyword: string;
@@ -20,6 +22,7 @@ interface LsiResponse {
 
 export default function ProjectLsiPage() {
   const params = useParams<{ projectId: string }>();
+  const { context, isLoading: contextLoading } = useProjectContext(params.projectId);
   const [keyword, setKeyword] = useState("");
   const [result, setResult] = useState<LsiResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -46,7 +49,7 @@ export default function ProjectLsiPage() {
     try {
       const response = await api.post<LsiResponse>("/lsi/suggest", {
         project_id: params.projectId,
-        keyword: keyword.trim(),
+        keyword: keyword.trim() || null,
         limit: 12,
         force_refresh: forceRefresh,
       });
@@ -69,18 +72,27 @@ export default function ProjectLsiPage() {
       title="Find semantic support terms"
       description="Use the project embeddings to surface related terms and semantic opportunities around a target keyword."
     >
-      <section className="rounded-[1.5rem] border border-border/70 bg-card p-6">
+      <section className="space-y-4 rounded-[1.5rem] border border-border/70 bg-card p-6">
+        <AutoModePanel
+          context={context}
+          isLoading={contextLoading}
+          projectId={params.projectId}
+          onPickKeyword={setKeyword}
+        />
         <form className="flex flex-col gap-4 md:flex-row" onSubmit={handleSubmit}>
           <input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            placeholder="entity-based seo"
+            placeholder={
+              context?.primary_keyword
+                ? `Leave blank to use “${context.primary_keyword}”`
+                : "entity-based seo"
+            }
             className="h-12 flex-1 rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
-            required
           />
           <button
             type="submit"
-            disabled={isSubmitting || !keyword.trim()}
+            disabled={isSubmitting || (!keyword.trim() && !context?.has_audit)}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ExternalLink, Globe2, Loader2, RefreshCcw, Scale, Target, Trophy } from "lucide-react";
 
+import { AutoModePanel } from "@/components/global/auto-mode-panel";
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
+import { useProjectContext } from "@/lib/useProjectContext";
 
 interface SerpEntry {
   position: number;
@@ -30,6 +32,7 @@ interface CompetitorResponse {
 
 export default function ProjectCompetitorPage() {
   const params = useParams<{ projectId: string }>();
+  const { context, isLoading: contextLoading } = useProjectContext(params.projectId);
   const [competitorUrl, setCompetitorUrl] = useState("");
   const [keyword, setKeyword] = useState("");
   const [result, setResult] = useState<CompetitorResponse | null>(null);
@@ -60,8 +63,8 @@ export default function ProjectCompetitorPage() {
     try {
       const response = await api.post<CompetitorResponse>("/competitors/benchmark", {
         project_id: params.projectId,
-        competitor_url: competitorUrl.trim(),
-        keyword: keyword.trim(),
+        competitor_url: competitorUrl.trim() || null,
+        keyword: keyword.trim() || null,
         force_refresh: forceRefresh,
       });
       setResult(response.data);
@@ -83,25 +86,33 @@ export default function ProjectCompetitorPage() {
       title="Compare your project against a live competitor"
       description="Submit a competitor URL and target keyword to calculate relative density, surface semantic opportunities, and see real Google SERP rankings (requires Serper API key)."
     >
-      <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
+      <section className="space-y-4 rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
+        <AutoModePanel
+          context={context}
+          isLoading={contextLoading}
+          projectId={params.projectId}
+          onPickKeyword={setKeyword}
+        />
         <form className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr_auto]" onSubmit={handleSubmit}>
           <input
             value={competitorUrl}
             onChange={(event) => setCompetitorUrl(event.target.value)}
-            placeholder="https://competitor.com/guide"
+            placeholder="Leave blank to auto-detect from Google SERP"
             className="h-12 rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
-            required
           />
           <input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            placeholder="generative engine optimization"
+            placeholder={
+              context?.primary_keyword
+                ? `Leave blank to use “${context.primary_keyword}”`
+                : "generative engine optimization"
+            }
             className="h-12 rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
-            required
           />
           <button
             type="submit"
-            disabled={isSubmitting || !competitorUrl.trim() || !keyword.trim()}
+            disabled={isSubmitting || (!keyword.trim() && !context?.has_audit)}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Target className="h-4 w-4" />}

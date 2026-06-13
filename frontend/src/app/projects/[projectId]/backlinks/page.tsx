@@ -5,8 +5,10 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { Loader2, RefreshCcw } from "lucide-react";
 
+import { AutoModePanel } from "@/components/global/auto-mode-panel";
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
+import { useProjectContext } from "@/lib/useProjectContext";
 
 interface BacklinkOpportunity {
   prospect_url: string;
@@ -25,6 +27,7 @@ interface BacklinkResponse {
 
 export default function ProjectBacklinksPage() {
   const params = useParams<{ projectId: string }>();
+  const { context, isLoading: contextLoading } = useProjectContext(params.projectId);
   const [keyword, setKeyword] = useState("");
   const [prospects, setProspects] = useState("");
   const [result, setResult] = useState<BacklinkResponse | null>(null);
@@ -54,7 +57,7 @@ export default function ProjectBacklinksPage() {
     try {
       const response = await api.post<BacklinkResponse>("/backlinks/opportunities", {
         project_id: params.projectId,
-        target_keyword: keyword.trim(),
+        target_keyword: keyword.trim() || null,
         prospect_urls: prospects
           .split("\n")
           .map((item) => item.trim())
@@ -80,14 +83,23 @@ export default function ProjectBacklinksPage() {
       title="Find backlink opportunities"
       description="Finds pages that actually rank on Google for your keyword (real SERP prospects) and drafts personalized outreach emails — links from these pages boost both rankings and the sources AI engines cite."
     >
-      <section className="rounded-[1.5rem] border border-border/70 bg-card p-6">
+      <section className="space-y-4 rounded-[1.5rem] border border-border/70 bg-card p-6">
+        <AutoModePanel
+          context={context}
+          isLoading={contextLoading}
+          projectId={params.projectId}
+          onPickKeyword={setKeyword}
+        />
         <form className="space-y-4" onSubmit={handleSubmit}>
           <input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            placeholder="technical seo consultant"
+            placeholder={
+              context?.primary_keyword
+                ? `Leave blank to use “${context.primary_keyword}”`
+                : "technical seo consultant"
+            }
             className="h-12 w-full rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
-            required
           />
           <textarea
             value={prospects}
@@ -97,7 +109,7 @@ export default function ProjectBacklinksPage() {
           />
           <button
             type="submit"
-            disabled={isSubmitting || !keyword.trim()}
+            disabled={isSubmitting || (!keyword.trim() && !context?.has_audit)}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

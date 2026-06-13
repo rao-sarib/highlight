@@ -20,6 +20,7 @@ from app.models.content import Content, ContentStatus, ContentType
 from app.models.project import Project
 from app.models.user import User
 from app.services.llm_service import llm_service
+from app.services.project_context import effective_niche, resolve_keyword
 from app.services.rag_service import rag_service
 from app.temporal.workflows.audit_workflow import AuditWorkflow, AuditWorkflowInput
 
@@ -32,7 +33,8 @@ TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "highlight-seo-task-queue
 
 class ContentGenerateRequest(BaseModel):
     project_id: uuid.UUID
-    topic: str = Field(min_length=2, max_length=512)
+    # Optional: when omitted, the project's detected niche/keyword is used.
+    topic: str | None = Field(default=None, max_length=512)
     content_type: ContentType = ContentType.BLOG
 
 
@@ -76,6 +78,7 @@ async def generate_content(
     current_user: User = Depends(require_feature(FEATURE_CONTENT)),
 ) -> ContentWorkflowResponse:
     project = _get_owned_project_or_404(db, body.project_id, current_user.id)
+    topic = await resolve_keyword(project, body.topic)
     try:
         client = await _get_temporal_client()
     except Exception as exc:
@@ -89,7 +92,7 @@ async def generate_content(
         AuditWorkflowInput(
             project_id=str(project.id),
             url=project.url,
-            content_topic=body.topic.strip(),
+            content_topic=topic,
             content_type=body.content_type.value,
             replace_embeddings=True,
         ),
@@ -100,7 +103,7 @@ async def generate_content(
         workflow_id=handle.id,
         run_id=getattr(handle, "first_execution_run_id", "") or getattr(handle, "result_run_id", ""),
         project_id=project.id,
-        topic=body.topic.strip(),
+        topic=topic,
         content_type=body.content_type,
         status="started",
     )
@@ -108,7 +111,8 @@ async def generate_content(
 
 class DirectContentRequest(BaseModel):
     project_id: uuid.UUID
-    topic: str = Field(min_length=2, max_length=512)
+    # Optional: when omitted, the project's detected niche/keyword is used.
+    topic: str | None = Field(default=None, max_length=512)
     content_type: ContentType = ContentType.GEO
 
 
@@ -125,12 +129,14 @@ async def generate_content_direct(
     for. Works without the Temporal worker.
     """
     project = _get_owned_project_or_404(db, body.project_id, current_user.id)
-    topic = body.topic.strip()
+    topic = await resolve_keyword(project, body.topic)
     context_chunks = await rag_service.search_similar(project.id, topic, db=db, top_k=5)
     generated_text = await llm_service.generate_content(
         topic=topic,
         context_chunks=context_chunks,
         content_type=body.content_type.value,
+        niche=effective_niche(project),
+        audience=project.target_audience,
     )
     content = Content(
         project_id=project.id,

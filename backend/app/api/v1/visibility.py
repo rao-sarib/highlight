@@ -29,6 +29,7 @@ from app.models.visibility_scan import VisibilityScan
 from app.db.session import get_db
 from app.services.geo_service import GeoServiceError, geo_service
 from app.services.llm_service import llm_service
+from app.services.project_context import resolve_keyword
 from app.services.quota_service import consume_scan
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,8 @@ CACHE_TTL_HOURS = 24
 
 class VisibilityRequest(BaseModel):
     project_id: uuid.UUID
-    keyword: str = Field(min_length=2, max_length=255)
+    # Optional: when omitted, the project's detected niche/keyword is used.
+    keyword: str | None = Field(default=None, max_length=255)
     prompt_count: int = Field(default=4, ge=2, le=6)
     force_refresh: bool = False
 
@@ -157,7 +159,10 @@ async def calculate_visibility_score(
             ),
         )
 
-    normalized_keyword = body.keyword.strip().lower()
+    # Auto-mode: resolve keyword from the project's niche/keywords when omitted,
+    # and relevance-guard a manually provided one.
+    keyword = await resolve_keyword(project, body.keyword)
+    normalized_keyword = keyword.strip().lower()
 
     # ── 24h cache: protect the API budget from repeated identical scans ────
     if not body.force_refresh:
@@ -184,7 +189,7 @@ async def calculate_visibility_score(
     # ── 1. Brand-neutral buyer prompts ──────────────────────────────────────
     try:
         prompts = await llm_service.generate_geo_prompts(
-            normalized_keyword, count=body.prompt_count
+            normalized_keyword, count=body.prompt_count, audience=project.target_audience
         )
     except Exception as exc:
         logger.exception("GEO prompt generation failed")

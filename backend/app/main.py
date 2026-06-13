@@ -80,6 +80,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             # Visibility scans: multi-engine breakdown (added in the multi-engine upgrade).
             "ALTER TABLE visibility_scans ADD COLUMN IF NOT EXISTS engines_used JSON NOT NULL DEFAULT '[]'",
             "ALTER TABLE visibility_scans ADD COLUMN IF NOT EXISTS per_engine JSON NOT NULL DEFAULT '[]'",
+            # Projects: seed keywords detected during the site audit (auto-mode).
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS detected_keywords JSON NOT NULL DEFAULT '[]'",
         ):
             conn.execute(text(ddl))
 

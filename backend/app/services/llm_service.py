@@ -41,12 +41,26 @@ class LLMService:
             self._client = AsyncOpenAI(api_key=self.api_key)
         return self._client
 
-    async def optimize_prompts(self, keyword: str) -> list[str]:
-        """Generate five GEO-friendly prompt variations for a base keyword."""
+    async def optimize_prompts(
+        self,
+        keyword: str,
+        niche: str | None = None,
+        audience: str | None = None,
+    ) -> list[str]:
+        """Generate five GEO-friendly prompt variations for a base keyword.
+
+        Niche/audience context (when known) keeps prompts aligned to the site.
+        """
 
         normalized_keyword = keyword.strip()
         if not normalized_keyword:
             raise ValueError("Keyword is required for prompt optimization.")
+
+        context_lines = [f"Keyword: {normalized_keyword}"]
+        if niche and niche.strip():
+            context_lines.append(f"Site niche: {niche.strip()}")
+        if audience and audience.strip():
+            context_lines.append(f"Target audience: {audience.strip()}")
 
         client = self._get_client()
         response = await client.chat.completions.create(
@@ -58,13 +72,14 @@ class LLMService:
                     "content": (
                         "You are a Generative Engine Optimization strategist. "
                         "Return exactly 5 distinct prompts that a user might ask an AI search "
-                        "engine about the provided keyword. Return only valid JSON in the form "
+                        "engine about the provided keyword, tailored to the site niche and "
+                        "audience when given. Return only valid JSON in the form "
                         '{"prompts":["...","..."]}.'
                     ),
                 },
                 {
                     "role": "user",
-                    "content": f"Keyword: {normalized_keyword}",
+                    "content": "\n".join(context_lines),
                 },
             ],
         )
@@ -80,7 +95,12 @@ class LLMService:
             raise LLMServiceError("OpenAI did not return the expected 5 prompts.")
         return cleaned_prompts[:5]
 
-    async def generate_geo_prompts(self, keyword: str, count: int = 4) -> list[str]:
+    async def generate_geo_prompts(
+        self,
+        keyword: str,
+        count: int = 4,
+        audience: str | None = None,
+    ) -> list[str]:
         """Generate brand-neutral buyer questions for live AI-visibility scans.
 
         The prompts must NOT name any brand — the whole point is testing
@@ -92,6 +112,9 @@ class LLMService:
         if not normalized_keyword:
             raise ValueError("Keyword is required for GEO prompt generation.")
         count = max(2, min(count, 6))
+        user_content = f"Topic: {normalized_keyword}"
+        if audience and audience.strip():
+            user_content += f"\nTarget audience: {audience.strip()}"
 
         client = self._get_client()
         response = await client.chat.completions.create(
@@ -110,7 +133,7 @@ class LLMService:
                         '{"prompts":["...","..."]}.'
                     ),
                 },
-                {"role": "user", "content": f"Topic: {normalized_keyword}"},
+                {"role": "user", "content": user_content},
             ],
         )
         raw_content = (response.choices[0].message.content or "").strip()
@@ -189,11 +212,16 @@ class LLMService:
         actions.sort(key=lambda a: a["priority"])
         return actions[:8]
 
-    async def detect_niche(self, samples: list[str]) -> str:
-        """Infer a site's niche/category from sampled titles, headings, text."""
+    async def analyze_site_profile(self, samples: list[str]) -> dict[str, Any]:
+        """Infer a site's niche AND seed keywords from sampled titles/headings.
+
+        One call powers the whole auto-mode: returns
+        {"niche": str, "keywords": ["...", ...]} (8-12 search keywords real
+        users would type when looking for what the site offers).
+        """
         joined = " | ".join(s.strip() for s in samples if s and s.strip())[:3500]
         if not joined:
-            return ""
+            return {"niche": "", "keywords": []}
         client = self._get_client()
         response = await client.chat.completions.create(
             model=CHAT_MODEL,
@@ -202,15 +230,63 @@ class LLMService:
                 {
                     "role": "system",
                     "content": (
-                        "You classify websites. From the page signals provided, return a "
-                        "concise niche/category description (5-12 words) describing what the "
-                        "site offers and to whom. Return plain text only, no quotes."
+                        "You classify websites for SEO. From the page signals provided, return "
+                        "only valid JSON in the form "
+                        '{"niche":"5-12 word description of what the site offers and to whom",'
+                        '"keywords":["..."]} '
+                        "with 8-12 realistic search keywords (1-4 words each) that potential "
+                        "visitors would type into Google or an AI assistant to find this site's "
+                        "category. Keywords must be brand-neutral (no site name)."
                     ),
                 },
                 {"role": "user", "content": joined},
             ],
         )
-        return (response.choices[0].message.content or "").strip().strip('"')[:480]
+        payload = self._safe_json_object((response.choices[0].message.content or "").strip())
+        niche = str(payload.get("niche", "")).strip().strip('"')[:480]
+        keywords: list[str] = []
+        seen: set[str] = set()
+        for item in payload.get("keywords", []):
+            term = str(item).strip()
+            if term and term.lower() not in seen:
+                seen.add(term.lower())
+                keywords.append(term[:80])
+        return {"niche": niche, "keywords": keywords[:12]}
+
+    async def check_keyword_relevance(
+        self, term: str, niche: str, site_name: str = ""
+    ) -> tuple[bool, str]:
+        """Guard manual input: is `term` plausibly related to the site's niche?
+
+        Lenient by design — only flags clearly unrelated topics (different
+        industry), so legitimate adjacent keywords aren't blocked.
+        """
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=0.0,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You validate SEO keyword targeting. Decide whether the keyword/topic is "
+                        "plausibly related to the website's niche. Be LENIENT: adjacent topics, "
+                        "broader/narrower phrasings, and audience questions are all relevant. "
+                        "Mark relevant=false ONLY when the keyword is clearly a different "
+                        "industry or subject with no sensible connection. Return only valid "
+                        'JSON: {"relevant":true|false,"reason":"one short sentence"}.'
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Website: {site_name or 'n/a'}\nNiche: {niche}\nKeyword/topic: {term}"
+                    ),
+                },
+            ],
+        )
+        payload = self._safe_json_object((response.choices[0].message.content or "").strip())
+        return bool(payload.get("relevant", True)), str(payload.get("reason", "")).strip()
 
     async def generate_related_keywords(
         self,
@@ -276,8 +352,14 @@ class LLMService:
         topic: str,
         context_chunks: list[str],
         content_type: str = "blog",
+        niche: str | None = None,
+        audience: str | None = None,
     ) -> str:
-        """Generate SEO-oriented content using retrieved RAG context."""
+        """Generate SEO-oriented content using retrieved RAG context.
+
+        Niche/audience (when known) anchor the output to the actual site even
+        for manually provided topics.
+        """
 
         normalized_topic = topic.strip()
         if not normalized_topic:
@@ -336,7 +418,17 @@ class LLMService:
                 },
                 {
                     "role": "user",
-                    "content": f"Topic: {normalized_topic}",
+                    "content": "\n".join(
+                        [
+                            f"Topic: {normalized_topic}",
+                            *([f"Site niche: {niche.strip()}"] if niche and niche.strip() else []),
+                            *(
+                                [f"Target audience: {audience.strip()}"]
+                                if audience and audience.strip()
+                                else []
+                            ),
+                        ]
+                    ),
                 },
             ],
         )

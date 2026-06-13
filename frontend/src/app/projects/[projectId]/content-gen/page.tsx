@@ -4,10 +4,17 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Clock3, FileText, Loader2, Sparkles } from "lucide-react";
 
+import { AutoModePanel } from "@/components/global/auto-mode-panel";
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
+import { useProjectContext } from "@/lib/useProjectContext";
 
 type ContentType = "blog" | "faq" | "meta" | "geo";
+
+interface PromptOptimizationResponse {
+  keyword: string;
+  prompts: string[];
+}
 
 interface WorkflowResponse {
   workflow_id: string;
@@ -30,8 +37,10 @@ interface ContentItem {
 
 export default function ProjectContentGenerationPage() {
   const params = useParams<{ projectId: string }>();
+  const { context, isLoading: contextLoading } = useProjectContext(params.projectId);
   const [topic, setTopic] = useState("");
   const [contentType, setContentType] = useState<ContentType>("blog");
+  const [optimizedPrompts, setOptimizedPrompts] = useState<string[]>([]);
   const [workflowResult, setWorkflowResult] = useState<WorkflowResponse | null>(null);
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,8 +63,21 @@ export default function ProjectContentGenerationPage() {
       }
     };
 
+    // Reuse prompts already generated in Prompt Optimization for this project.
+    const loadPrompts = async () => {
+      try {
+        const response = await api.get<PromptOptimizationResponse>(
+          `/prompts/${params.projectId}/latest`,
+        );
+        setOptimizedPrompts(response.data.prompts ?? []);
+      } catch {
+        setOptimizedPrompts([]);
+      }
+    };
+
     if (params.projectId) {
       void loadContent();
+      void loadPrompts();
     }
   }, [params.projectId]);
 
@@ -67,7 +89,7 @@ export default function ProjectContentGenerationPage() {
     try {
       const response = await api.post<WorkflowResponse>("/content/generate", {
         project_id: params.projectId,
-        topic: topic.trim(),
+        topic: topic.trim() || null,
         content_type: contentType,
       });
       setWorkflowResult(response.data);
@@ -86,14 +108,49 @@ export default function ProjectContentGenerationPage() {
       title="Launch the Temporal content workflow"
       description="Send a topic and content type to the backend workflow, then review the generated content already saved for this project. The GEO type produces AI-citable sections (direct answer, key facts, FAQ, schema) designed to win citations in AI engines."
     >
-      <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
+      <section className="space-y-4 rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
+        <AutoModePanel
+          context={context}
+          isLoading={contextLoading}
+          projectId={params.projectId}
+          onPickKeyword={setTopic}
+          termLabel="topic"
+        />
+
+        {optimizedPrompts.length > 0 ? (
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground" htmlFor="reuse-prompt">
+              Reuse an optimized prompt{" "}
+              <span className="font-normal text-muted-foreground">
+                (from Prompt Optimization)
+              </span>
+            </label>
+            <select
+              id="reuse-prompt"
+              value=""
+              onChange={(event) => event.target.value && setTopic(event.target.value)}
+              className="h-12 w-full rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
+            >
+              <option value="">Select a saved prompt to use as the topic…</option>
+              {optimizedPrompts.map((prompt, index) => (
+                <option key={`${prompt}-${index}`} value={prompt}>
+                  {prompt}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
         <form className="grid gap-4 xl:grid-cols-[1fr_180px_auto]" onSubmit={handleSubmit}>
           <input
             value={topic}
             onChange={(event) => setTopic(event.target.value)}
-            placeholder="Best AI visibility strategies for software teams"
+            placeholder={
+              context?.primary_keyword
+                ? `Leave blank to use “${context.primary_keyword}”`
+                : "Best AI visibility strategies for software teams"
+            }
             className="h-12 rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
-            required
           />
           <select
             value={contentType}
@@ -107,7 +164,7 @@ export default function ProjectContentGenerationPage() {
           </select>
           <button
             type="submit"
-            disabled={isSubmitting || !topic.trim()}
+            disabled={isSubmitting || (!topic.trim() && !context?.has_audit)}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}

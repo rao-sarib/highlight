@@ -17,8 +17,10 @@ import {
 } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
+import { AutoModePanel } from "@/components/global/auto-mode-panel";
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
+import { useProjectContext } from "@/lib/useProjectContext";
 
 interface ScanHistoryEntry {
   id: string;
@@ -116,6 +118,7 @@ const ENGINE_LABEL: Record<string, string> = {
 
 export default function ProjectVisibilityPage() {
   const params = useParams<{ projectId: string }>();
+  const { context, isLoading: contextLoading } = useProjectContext(params.projectId);
   const [keyword, setKeyword] = useState("");
   const [result, setResult] = useState<VisibilityResponse | null>(null);
   const [history, setHistory] = useState<ScanHistoryEntry[]>([]);
@@ -166,7 +169,7 @@ export default function ProjectVisibilityPage() {
     try {
       const response = await api.post<VisibilityResponse>("/visibility/score", {
         project_id: params.projectId,
-        keyword: keyword.trim(),
+        keyword: keyword.trim() || null,
         prompt_count: 4,
         force_refresh: forceRefresh,
       });
@@ -194,18 +197,27 @@ export default function ProjectVisibilityPage() {
       title="AI Share of Voice"
       description="Asks real buyer questions to multiple live AI answer engines (Perplexity + ChatGPT, and Gemini when configured) and measures how often your brand is cited — with a per-engine breakdown and the competitors cited instead."
     >
-      <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
+      <section className="space-y-4 rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
+        <AutoModePanel
+          context={context}
+          isLoading={contextLoading}
+          projectId={params.projectId}
+          onPickKeyword={setKeyword}
+        />
         <form className="grid gap-4 lg:grid-cols-[1fr_auto]" onSubmit={handleSubmit}>
           <input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            placeholder="e.g. project management software"
+            placeholder={
+              context?.primary_keyword
+                ? `Leave blank to use “${context.primary_keyword}”`
+                : "e.g. project management software"
+            }
             className="h-12 rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
-            required
           />
           <button
             type="submit"
-            disabled={isSubmitting || !keyword.trim()}
+            disabled={isSubmitting || (!keyword.trim() && !context?.has_audit)}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}

@@ -29,6 +29,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.services.cache_service import get_cached, get_latest_for_feature, make_input_key, upsert_cached
 from app.services.llm_service import llm_service
+from app.services.project_context import resolve_keyword
 from app.services.scraper_service import scraper_service
 from app.services.serper_service import serper_service
 
@@ -40,7 +41,8 @@ MAX_PROSPECTS = 5
 
 class BacklinkOpportunityRequest(BaseModel):
     project_id: uuid.UUID
-    target_keyword: str = Field(min_length=2, max_length=255)
+    # Optional: when omitted, the project's detected niche/keyword is used.
+    target_keyword: str | None = Field(default=None, max_length=255)
     prospect_urls: list[str] = Field(default_factory=list, max_length=10)
     force_refresh: bool = False
 
@@ -101,7 +103,7 @@ async def find_backlink_opportunities(
 ) -> BacklinkOpportunityResponse:
     project = _get_owned_project_or_404(db, body.project_id, current_user.id)
     project_host = _host_of(project.url)
-    keyword = body.target_keyword.strip()
+    keyword = await resolve_keyword(project, body.target_keyword)
 
     input_key = make_input_key(keyword, "|".join(sorted(body.prospect_urls)))
     if not body.force_refresh:

@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Copy, Loader2, RefreshCcw, Sparkles } from "lucide-react";
 
+import { AutoModePanel } from "@/components/global/auto-mode-panel";
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
+import { useProjectContext } from "@/lib/useProjectContext";
 
 interface PromptOptimizationResponse {
   keyword: string;
@@ -16,6 +18,7 @@ interface PromptOptimizationResponse {
 
 export default function ProjectPromptsPage() {
   const params = useParams<{ projectId: string }>();
+  const { context, isLoading: contextLoading } = useProjectContext(params.projectId);
   const [keyword, setKeyword] = useState("");
   const [result, setResult] = useState<PromptOptimizationResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -47,7 +50,7 @@ export default function ProjectPromptsPage() {
     try {
       const response = await api.post<PromptOptimizationResponse>("/prompts/optimize", {
         project_id: params.projectId,
-        keyword: keyword.trim(),
+        keyword: keyword.trim() || null,
         force_refresh: forceRefresh,
       });
       setResult(response.data);
@@ -76,24 +79,33 @@ export default function ProjectPromptsPage() {
       title="Generate GEO-ready prompts"
       description="Feed a seed keyword into the OpenAI-powered optimization endpoint and turn it into search prompts tailored for AI answer engines."
     >
-      <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
+      <section className="space-y-4 rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
+        <AutoModePanel
+          context={context}
+          isLoading={contextLoading}
+          projectId={params.projectId}
+          onPickKeyword={setKeyword}
+        />
         <form className="grid gap-4 lg:grid-cols-[1fr_auto]" onSubmit={handleGenerate}>
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground" htmlFor="keyword">
-              Base keyword
+              Base keyword <span className="font-normal text-muted-foreground">(optional)</span>
             </label>
             <input
               id="keyword"
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
-              placeholder="ai seo software for ecommerce brands"
+              placeholder={
+                context?.primary_keyword
+                  ? `Leave blank to use “${context.primary_keyword}”`
+                  : "ai seo software for ecommerce brands"
+              }
               className="h-12 w-full rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
-              required
             />
           </div>
           <button
             type="submit"
-            disabled={isSubmitting || !keyword.trim()}
+            disabled={isSubmitting || (!keyword.trim() && !context?.has_audit)}
             className="inline-flex h-12 items-center justify-center gap-2 self-end rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}

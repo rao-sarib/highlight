@@ -99,8 +99,9 @@ async def run_site_audit(
     if combined_text:
         chunk_count = await rag_service.replace_project_embeddings(pid, combined_text, db=db)
 
-    # Detect niche from titles + headings across the site.
+    # Detect niche + seed keywords from titles + headings across the site.
     detected = None
+    detected_keywords: list[str] = []
     if detect_niche:
         samples: list[str] = []
         for page in ok_pages[:12]:
@@ -108,9 +109,11 @@ async def run_site_audit(
                 samples.append(page.title)
             samples.extend(h.text for h in page.headings[:3])
         try:
-            detected = await llm_service.detect_niche(samples)
+            profile = await llm_service.analyze_site_profile(samples)
+            detected = profile.get("niche") or None
+            detected_keywords = profile.get("keywords", [])
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Niche detection failed: %s", exc)
+            logger.warning("Site profile detection failed: %s", exc)
 
     # Update project headline fields.
     project = db.get(Project, pid)
@@ -122,6 +125,8 @@ async def run_site_audit(
         project.seo_health_score = health_score
         if detected:
             project.detected_niche = detected
+        if detected_keywords:
+            project.detected_keywords = detected_keywords
         db.add(project)
 
     db.commit()
@@ -135,6 +140,7 @@ async def run_site_audit(
         "severity_counts": severity_counts,
         "top_issues": [{"issue_type": k, "count": v} for k, v in top_issues],
         "detected_niche": detected,
+        "detected_keywords": detected_keywords,
         "indexed_chunks": chunk_count,
         "audited_at": now.isoformat(),
     }

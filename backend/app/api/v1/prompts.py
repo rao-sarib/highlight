@@ -20,6 +20,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.services.cache_service import get_cached, get_latest_for_feature, make_input_key, upsert_cached
 from app.services.llm_service import llm_service
+from app.services.project_context import effective_niche, resolve_keyword
 
 router = APIRouter(prefix="/prompts", tags=["Prompt Optimization"])
 
@@ -28,7 +29,8 @@ FEATURE = "prompts"
 
 class PromptOptimizationRequest(BaseModel):
     project_id: uuid.UUID
-    keyword: str = Field(min_length=2, max_length=255)
+    # Optional: when omitted, the project's detected niche/keyword is used.
+    keyword: str | None = Field(default=None, max_length=255)
     force_refresh: bool = False
 
 
@@ -52,8 +54,9 @@ async def optimize_prompts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> PromptOptimizationResponse:
-    _owned(db, body.project_id, current_user.id)
-    input_key = make_input_key(body.keyword)
+    project = _owned(db, body.project_id, current_user.id)
+    keyword = await resolve_keyword(project, body.keyword)
+    input_key = make_input_key(keyword)
 
     if not body.force_refresh:
         cached = get_cached(db, body.project_id, FEATURE, input_key)
@@ -62,8 +65,10 @@ async def optimize_prompts(
                 **cached.payload, cached=True, generated_at=cached.updated_at
             )
 
-    prompts = await llm_service.optimize_prompts(body.keyword)
-    payload = {"keyword": body.keyword.strip(), "prompts": prompts}
+    prompts = await llm_service.optimize_prompts(
+        keyword, niche=effective_niche(project), audience=project.target_audience
+    )
+    payload = {"keyword": keyword, "prompts": prompts}
     row = upsert_cached(db, body.project_id, FEATURE, input_key, payload)
     return PromptOptimizationResponse(**payload, cached=False, generated_at=row.updated_at)
 

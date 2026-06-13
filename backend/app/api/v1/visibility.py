@@ -77,6 +77,10 @@ class EngineSummary(BaseModel):
     cited: int
     in_sources: int
     prompts: int
+    cited_rate: float = 0.0
+    responses: int = 0
+    attempted: int = 0
+    total_prompts: int = 0
 
 
 class VisibilityResponse(BaseModel):

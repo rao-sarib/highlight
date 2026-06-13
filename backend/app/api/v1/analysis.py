@@ -59,19 +59,70 @@ class ActionItem(BaseModel):
 class AnalysisReport(BaseModel):
     project_id: uuid.UUID
     niche: str | None = None
+    # ── SEO (secondary) ──────────────────────────────────────────────
     seo_health_score: float | None = None
     pages_crawled: int = 0
     total_issues: int = 0
     top_issues: list[dict] = []
+    severity_counts: dict = {}
+    # ── GEO / AI visibility (primary) ────────────────────────────────
     share_of_voice: float | None = None
     engines_used: list[str] = []
     per_engine: list[dict] = []
     cited_count: int = 0
+    in_sources_count: int = 0
     prompt_count: int = 0
+    cited_prompts: list[str] = []
     gap_prompts: list[str] = []
     competitors: list[str] = []
+    # ── Narrative ────────────────────────────────────────────────────
+    strengths: list[str] = []
     action_plan: list[ActionItem] = []
     generated_at: datetime | None = None
+
+
+def _build_strengths(
+    *,
+    seo_health: float | None,
+    severity_counts: dict,
+    pages_crawled: int,
+    per_engine: list[dict],
+    cited_prompts: list[str],
+    in_sources_count: int,
+) -> list[str]:
+    """Surface what's already working — GEO wins first, then SEO foundations."""
+    wins: list[str] = []
+
+    # GEO wins lead the report.
+    for eng in per_engine:
+        cited = eng.get("cited", 0)
+        responses = eng.get("responses", eng.get("prompts", 0))
+        if cited and responses:
+            rate = eng.get("cited_rate", round(cited / responses * 100, 1))
+            wins.append(
+                f"{eng.get('label', eng.get('engine'))}: your site is cited in "
+                f"{cited} of {responses} AI answers ({rate}%)."
+            )
+    if cited_prompts:
+        wins.append(
+            f"Already the recommended answer for {len(cited_prompts)} buyer "
+            f"question{'s' if len(cited_prompts) != 1 else ''} across AI engines."
+        )
+    elif in_sources_count:
+        wins.append(
+            f"Appears in the sources AI engines consulted for {in_sources_count} "
+            "question(s) — close to being cited."
+        )
+
+    # SEO foundations (secondary).
+    if seo_health is not None and seo_health >= 80:
+        wins.append(f"Strong technical SEO foundation — health score {seo_health:.0f}/100.")
+    elif seo_health is not None and seo_health >= 65:
+        wins.append(f"Healthy technical SEO baseline — health score {seo_health:.0f}/100.")
+    if not severity_counts.get("critical") and pages_crawled:
+        wins.append(f"No critical on-page issues across {pages_crawled} crawled page(s).")
+
+    return wins
 
 
 def _owned(db: Session, project_id: uuid.UUID, user_id: uuid.UUID) -> Project:
@@ -121,6 +172,7 @@ async def run_full_analysis(
     cited_prompts: list[str] = []
     competitors: list[str] = []
     cited_count = 0
+    in_sources_count = 0
     prompt_count = 0
 
     if geo_service.is_configured:
@@ -153,8 +205,9 @@ async def run_full_analysis(
             engines_used = scan.engines_used
             per_engine = scan.per_engine
             cited_count = scan.cited_count
+            in_sources_count = scan.in_sources_count
             prompt_count = scan.prompt_count
-            gap_prompts = [r.prompt for r in scan.results if r.status != "cited"]
+            gap_prompts = [r.prompt for r in scan.results if r.status not in ("cited", "in_sources")]
             cited_prompts = [r.prompt for r in scan.results if r.status == "cited"]
             competitors = [c["domain"] for c in scan.top_competitors]
         except GeoServiceError as exc:
@@ -174,6 +227,16 @@ async def run_full_analysis(
         logger.warning("Action plan generation failed: %s", exc)
         action_plan = []
 
+    severity_counts = audit.get("severity_counts", {}) or {}
+    strengths = _build_strengths(
+        seo_health=audit.get("seo_health_score"),
+        severity_counts=severity_counts,
+        pages_crawled=audit.get("pages_crawled", 0),
+        per_engine=per_engine,
+        cited_prompts=cited_prompts,
+        in_sources_count=in_sources_count,
+    )
+
     report = AnalysisReport(
         project_id=project.id,
         niche=niche,
@@ -181,13 +244,17 @@ async def run_full_analysis(
         pages_crawled=audit.get("pages_crawled", 0),
         total_issues=audit.get("total_issues", 0),
         top_issues=audit.get("top_issues", []),
+        severity_counts=severity_counts,
         share_of_voice=share_of_voice,
         engines_used=engines_used,
         per_engine=per_engine,
         cited_count=cited_count,
+        in_sources_count=in_sources_count,
         prompt_count=prompt_count,
+        cited_prompts=cited_prompts,
         gap_prompts=gap_prompts,
         competitors=competitors,
+        strengths=strengths,
         action_plan=[ActionItem(**a) for a in action_plan],
         generated_at=datetime.now(timezone.utc),
     )

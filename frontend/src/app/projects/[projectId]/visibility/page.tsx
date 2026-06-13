@@ -31,9 +31,11 @@ interface ScanHistoryEntry {
   created_at: string;
 }
 
+type CitationStatus = "cited" | "in_sources" | "absent" | "no_overview" | "error";
+
 interface EngineAnswer {
   engine: string;
-  status: "cited" | "in_sources" | "absent" | "error";
+  status: CitationStatus;
   answer: string;
   citations: string[];
   matched_urls: string[];
@@ -44,7 +46,7 @@ interface EngineAnswer {
 
 interface PromptResult {
   prompt: string;
-  status: "cited" | "in_sources" | "absent" | "error";
+  status: CitationStatus;
   engines: EngineAnswer[];
   competitor_domains: string[];
 }
@@ -102,6 +104,12 @@ const STATUS_META: Record<
     Icon: XCircle,
     iconClass: "text-destructive",
   },
+  no_overview: {
+    label: "No AI Overview",
+    chip: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
+    Icon: MinusCircle,
+    iconClass: "text-muted-foreground",
+  },
   error: {
     label: "Query failed",
     chip: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
@@ -114,6 +122,7 @@ const ENGINE_LABEL: Record<string, string> = {
   perplexity: "Perplexity",
   openai: "ChatGPT",
   gemini: "Gemini",
+  google_aio: "Google AI Overview",
 };
 
 export default function ProjectVisibilityPage() {
@@ -195,7 +204,7 @@ export default function ProjectVisibilityPage() {
     <FeaturePageFrame
       eyebrow="AI Visibility · GEO"
       title="AI Share of Voice"
-      description="Asks real buyer questions to multiple live AI answer engines (Perplexity + ChatGPT, and Gemini when configured) and measures how often your brand is cited — with a per-engine breakdown and the competitors cited instead."
+      description="Asks real buyer questions to multiple live AI answer engines (Perplexity, ChatGPT, Gemini, and Google AI Overview when configured) and measures how often your brand is cited — with a per-engine breakdown and the competitors cited instead."
     >
       <section className="space-y-4 rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
         <AutoModePanel
@@ -447,6 +456,10 @@ export default function ProjectVisibilityPage() {
                           {eng.status === "error" ? (
                             <p className="mt-2 text-xs text-muted-foreground">
                               {eng.error ?? "Query failed."}
+                            </p>
+                          ) : eng.status === "no_overview" ? (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              Google didn&apos;t show an AI Overview for this query.
                             </p>
                           ) : (
                             <>

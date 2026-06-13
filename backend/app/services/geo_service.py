@@ -6,7 +6,8 @@ and detects whether the project's domain/brand is cited:
 
   • Perplexity  (sonar, returns citations)            — needs PERPLEXITY_API_KEY
   • OpenAI      (gpt-4o-search-preview, web-grounded)  — needs OPENAI_API_KEY
-  • Gemini      (gemini + Google Search grounding)     — needs GEMINI_API_KEY (optional)
+  • Gemini      (gemini + Google Search grounding)     — needs GEMINI_API_KEY
+  • Google AI Overview (via Serper SERP API)           — needs SERPER_API_KEY
 
 Produces an overall "AI Share of Voice", a per-engine breakdown, and the
 competitor domains cited instead. Cost is bounded: low search context, capped
@@ -31,11 +32,13 @@ logger = logging.getLogger(__name__)
 ENGINE_PERPLEXITY = "perplexity"
 ENGINE_OPENAI = "openai"
 ENGINE_GEMINI = "gemini"
+ENGINE_GOOGLE_AIO = "google_aio"
 
 ENGINE_LABELS = {
     ENGINE_PERPLEXITY: "Perplexity",
     ENGINE_OPENAI: "ChatGPT (OpenAI)",
     ENGINE_GEMINI: "Gemini",
+    ENGINE_GOOGLE_AIO: "Google AI Overview",
 }
 
 PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions"
@@ -46,6 +49,7 @@ GEMINI_API_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     "gemini-2.0-flash:generateContent"
 )
+SERPER_API_URL = "https://google.serper.dev/search"
 ENGINE_TIMEOUT = 45
 MAX_ANSWER_TOKENS = 300
 MAX_CONCURRENCY = 5
@@ -65,10 +69,15 @@ class GeoServiceError(RuntimeError):
     """Raised when a GEO scan cannot run at all."""
 
 
+# Sentinel returned by the Google AI Overview query when Google shows no
+# AI Overview for a given prompt (a real, meaningful outcome — not a failure).
+NO_OVERVIEW = object()
+
+
 @dataclass(slots=True)
 class EngineAnswer:
     engine: str
-    status: str = "absent"  # cited | in_sources | absent | error
+    status: str = "absent"  # cited | in_sources | absent | no_overview | error
     answer: str = ""
     citations: list[str] = field(default_factory=list)
     matched_urls: list[str] = field(default_factory=list)
@@ -157,10 +166,11 @@ class GeoService:
     perplexity_key: str = field(default_factory=lambda: settings.PERPLEXITY_API_KEY.strip())
     openai_key: str = field(default_factory=lambda: settings.OPENAI_API_KEY.strip())
     gemini_key: str = field(default_factory=lambda: settings.GEMINI_API_KEY.strip())
+    serper_key: str = field(default_factory=lambda: settings.SERPER_API_KEY.strip())
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.perplexity_key or self.openai_key)
+        return bool(self.perplexity_key or self.openai_key or self.gemini_key or self.serper_key)
 
     def available_engines(self) -> list[str]:
         engines: list[str] = []
@@ -170,6 +180,8 @@ class GeoService:
             engines.append(ENGINE_OPENAI)
         if self.gemini_key:
             engines.append(ENGINE_GEMINI)
+        if self.serper_key:
+            engines.append(ENGINE_GOOGLE_AIO)
         return engines
 
     # ── Per-engine queries → (answer_text, citation_urls) ────────────────────
@@ -244,13 +256,44 @@ class GeoService:
                 citations.append(url)
         return answer, citations
 
-    async def _query(self, engine: str, client: httpx.AsyncClient, prompt: str) -> tuple[str, list[str]]:
+    async def _q_google_aio(self, client: httpx.AsyncClient, prompt: str):
+        """Check Google's AI Overview (via Serper) for a prompt.
+
+        Returns (answer_text, citation_urls) when Google shows an AI Overview,
+        or NO_OVERVIEW when none is shown for that query (a real outcome — you
+        cannot be cited in an overview that does not exist).
+        """
+        resp = await client.post(
+            SERPER_API_URL,
+            headers={"X-API-KEY": self.serper_key, "Content-Type": "application/json"},
+            json={"q": prompt.strip()},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        aio = data.get("aiOverview") or data.get("ai_overview")
+        if not aio:
+            return NO_OVERVIEW
+        # Text can arrive as a flat snippet or as structured text blocks.
+        text = str(aio.get("snippet") or aio.get("text") or "")
+        if not text:
+            blocks = aio.get("textBlocks") or aio.get("text_blocks") or []
+            text = " ".join(str(b.get("snippet") or b.get("text") or "") for b in blocks).strip()
+        citations: list[str] = []
+        for ref in (aio.get("references") or aio.get("sources") or []):
+            url = str(ref.get("link") or ref.get("url") or "").strip()
+            if url and url not in citations:
+                citations.append(url)
+        return text, citations
+
+    async def _query(self, engine: str, client: httpx.AsyncClient, prompt: str):
         if engine == ENGINE_PERPLEXITY:
             return await self._q_perplexity(client, prompt)
         if engine == ENGINE_OPENAI:
             return await self._q_openai(client, prompt)
         if engine == ENGINE_GEMINI:
             return await self._q_gemini(client, prompt)
+        if engine == ENGINE_GOOGLE_AIO:
+            return await self._q_google_aio(client, prompt)
         raise GeoServiceError(f"Unknown engine: {engine}")
 
     def _evaluate(
@@ -289,7 +332,10 @@ class GeoService:
     async def scan(self, prompts: list[str], project_url: str, project_name: str) -> GeoScanResult:
         engines = self.available_engines()
         if not engines:
-            raise GeoServiceError("No AI engines are configured (need PERPLEXITY_API_KEY or OPENAI_API_KEY).")
+            raise GeoServiceError(
+                "No AI engines are configured (need at least one of PERPLEXITY_API_KEY, "
+                "OPENAI_API_KEY, GEMINI_API_KEY, or SERPER_API_KEY)."
+            )
 
         project_host = _host_of(project_url)
         brand_terms = brand_terms_from(project_name, project_url)
@@ -309,15 +355,21 @@ class GeoService:
             if isinstance(outcome, BaseException):
                 logger.warning("GEO %s/%s failed: %s", engine, prompt[:40], outcome)
                 by_prompt[prompt].append(EngineAnswer(engine=engine, status="error", error=str(outcome)))
+            elif outcome is NO_OVERVIEW:
+                by_prompt[prompt].append(EngineAnswer(engine=engine, status="no_overview"))
             else:
                 answer, citations = outcome
                 by_prompt[prompt].append(self._evaluate(engine, answer, citations, project_host, brand_terms))
 
         # Aggregate per prompt + overall + per engine.
+        # "no_overview" (Google showed no AI Overview) and "error" are excluded
+        # from share-of-voice math — you cannot be cited where there is nothing.
         results: list[PromptScanResult] = []
         engine_cells: dict[str, list[str]] = {e: [] for e in engines}
+        engine_attempts: dict[str, int] = {e: 0 for e in engines}
         competitor_counter: dict[str, int] = {}
         cited_cells = in_sources_cells = total_cells = 0
+        excluded = {"error", "no_overview"}
 
         for prompt in prompts:
             engine_answers = by_prompt[prompt]
@@ -325,6 +377,8 @@ class GeoService:
             statuses = []
             for ea in engine_answers:
                 if ea.status != "error":
+                    engine_attempts[ea.engine] = engine_attempts.get(ea.engine, 0) + 1
+                if ea.status not in excluded:
                     engine_cells[ea.engine].append(ea.status)
                     total_cells += 1
                     if ea.status == "cited":
@@ -341,33 +395,45 @@ class GeoService:
                 agg = "cited"
             elif "in_sources" in statuses:
                 agg = "in_sources"
-            elif all(s == "error" for s in statuses):
-                agg = "error"
+            elif all(s in excluded for s in statuses):
+                agg = "absent"
             else:
                 agg = "absent"
             results.append(
                 PromptScanResult(prompt=prompt, status=agg, engines=engine_answers, competitor_domains=prompt_competitors[:8])
             )
 
-        if total_cells == 0:
+        total_attempts = sum(engine_attempts.values())
+        if total_attempts == 0:
             raise GeoServiceError("All AI-engine queries failed — check API keys/credits.")
 
-        share_of_voice = round((cited_cells + 0.5 * in_sources_cells) / total_cells * 100, 1)
+        share_of_voice = (
+            round((cited_cells + 0.5 * in_sources_cells) / total_cells * 100, 1) if total_cells else 0.0
+        )
 
         per_engine: list[dict] = []
         for engine in engines:
             cells = engine_cells[engine]
-            if not cells:
+            attempts = engine_attempts.get(engine, 0)
+            if not cells and attempts == 0:
                 continue
             c = cells.count("cited")
             s = cells.count("in_sources")
+            responses = len(cells)  # answers that could cite (overview shown, etc.)
             per_engine.append({
                 "engine": engine,
                 "label": ENGINE_LABELS.get(engine, engine),
-                "share_of_voice": round((c + 0.5 * s) / len(cells) * 100, 1),
+                "share_of_voice": round((c + 0.5 * s) / responses * 100, 1) if responses else 0.0,
+                # Direct citation rate: how many responses explicitly cited the brand.
+                "cited_rate": round(c / responses * 100, 1) if responses else 0.0,
                 "cited": c,
                 "in_sources": s,
-                "prompts": len(cells),
+                "prompts": responses,
+                "responses": responses,
+                # For Google AI Overview: how many prompts actually triggered an
+                # overview vs total prompts asked (overview not always shown).
+                "attempted": attempts,
+                "total_prompts": len(prompts),
             })
 
         # Prompt-level cited count (cited in at least one engine) for headline.

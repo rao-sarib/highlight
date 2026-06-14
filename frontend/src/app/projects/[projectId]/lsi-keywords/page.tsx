@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
-import { Loader2, RefreshCcw } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 import { AutoModePanel } from "@/components/global/auto-mode-panel";
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
@@ -68,6 +68,7 @@ export default function ProjectLsiPage() {
 
   return (
     <FeaturePageFrame
+      feature="lsi"
       eyebrow="LSI Keywords"
       title="Find semantic support terms"
       description="Use the project embeddings to surface related terms and semantic opportunities around a target keyword."

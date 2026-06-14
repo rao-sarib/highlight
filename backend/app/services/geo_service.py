@@ -329,13 +329,29 @@ class GeoService:
             competitor_domains=competitors[:8],
         )
 
-    async def scan(self, prompts: list[str], project_url: str, project_name: str) -> GeoScanResult:
+    async def scan(
+        self,
+        prompts: list[str],
+        project_url: str,
+        project_name: str,
+        allowed_engines: list[str] | None = None,
+    ) -> GeoScanResult:
         engines = self.available_engines()
         if not engines:
             raise GeoServiceError(
                 "No AI engines are configured (need at least one of PERPLEXITY_API_KEY, "
                 "OPENAI_API_KEY, GEMINI_API_KEY, or SERPER_API_KEY)."
             )
+        # Plan limit: restrict the scan to the engines the user's tier allows
+        # (order preserved). Engines the plan permits but that aren't keyed are
+        # simply skipped.
+        if allowed_engines is not None:
+            allowed = set(allowed_engines)
+            engines = [e for e in engines if e in allowed]
+            if not engines:
+                raise GeoServiceError(
+                    "None of your plan's AI engines are configured on the server."
+                )
 
         project_host = _host_of(project_url)
         brand_terms = brand_terms_from(project_name, project_url)
@@ -367,6 +383,7 @@ class GeoService:
         results: list[PromptScanResult] = []
         engine_cells: dict[str, list[str]] = {e: [] for e in engines}
         engine_attempts: dict[str, int] = {e: 0 for e in engines}
+        engine_errors: dict[str, int] = {e: 0 for e in engines}
         competitor_counter: dict[str, int] = {}
         cited_cells = in_sources_cells = total_cells = 0
         excluded = {"error", "no_overview"}
@@ -376,7 +393,9 @@ class GeoService:
             prompt_competitors: list[str] = []
             statuses = []
             for ea in engine_answers:
-                if ea.status != "error":
+                if ea.status == "error":
+                    engine_errors[ea.engine] = engine_errors.get(ea.engine, 0) + 1
+                else:
                     engine_attempts[ea.engine] = engine_attempts.get(ea.engine, 0) + 1
                 if ea.status not in excluded:
                     engine_cells[ea.engine].append(ea.status)
@@ -415,11 +434,15 @@ class GeoService:
         for engine in engines:
             cells = engine_cells[engine]
             attempts = engine_attempts.get(engine, 0)
-            if not cells and attempts == 0:
-                continue
+            errors = engine_errors.get(engine, 0)
             c = cells.count("cited")
             s = cells.count("in_sources")
             responses = len(cells)  # answers that could cite (overview shown, etc.)
+            # An engine that errored on every prompt (bad key, no credits, or
+            # rate-limited) produced no usable answer. Keep it in the breakdown
+            # flagged as unavailable rather than silently dropping it — otherwise
+            # the cards disagree with engines_used.
+            unavailable = responses == 0 and attempts == 0 and errors > 0
             per_engine.append({
                 "engine": engine,
                 "label": ENGINE_LABELS.get(engine, engine),
@@ -433,6 +456,9 @@ class GeoService:
                 # For Google AI Overview: how many prompts actually triggered an
                 # overview vs total prompts asked (overview not always shown).
                 "attempted": attempts,
+                # How many queries to this engine failed, and whether every one did.
+                "errored": errors,
+                "unavailable": unavailable,
                 "total_prompts": len(prompts),
             })
 

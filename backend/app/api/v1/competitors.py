@@ -32,6 +32,15 @@ router = APIRouter(prefix="/competitors", tags=["Competitors"])
 
 FEATURE = "competitors"
 
+# Sites that serve bot-walls / block scraping (or are user-generated social
+# feeds), so they're useless as a content-benchmark target even when they rank.
+# Skipped during competitor auto-detection.
+UNSCRAPEABLE_HOSTS = (
+    "reddit.com", "youtube.com", "youtu.be", "facebook.com", "twitter.com",
+    "x.com", "instagram.com", "tiktok.com", "pinterest.com", "linkedin.com",
+    "quora.com",
+)
+
 TOKEN_PATTERN = re.compile(r"[a-zA-Z][a-zA-Z0-9-]+")
 STOP_WORDS = {
     "about", "after", "again", "also", "because", "been", "being", "from", "into",
@@ -89,8 +98,15 @@ async def _auto_detect_competitor(keyword: str, project_url: str) -> str | None:
     project_host = urlparse(project_url).netloc.lower().removeprefix("www.")
     for entry in result.organic:
         host = urlparse(entry.url).netloc.lower().removeprefix("www.")
-        if host and project_host and host != project_host and project_host not in host and host not in project_host:
-            return entry.url
+        if not host or not project_host:
+            continue
+        if host == project_host or project_host in host or host in project_host:
+            continue
+        # Skip bot-walled / social domains — they scrape to junk ("Please wait
+        # for verification") and produce meaningless density + gap terms.
+        if any(host == bad or host.endswith("." + bad) for bad in UNSCRAPEABLE_HOSTS):
+            continue
+        return entry.url
     return None
 
 

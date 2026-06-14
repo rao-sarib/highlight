@@ -30,6 +30,11 @@ class AuditWorkflowInput:
     content_topic: str | None = None
     content_type: str = "meta"
     replace_embeddings: bool = True
+    # When True, ONLY generate content from the project's existing embeddings —
+    # skip the scrape / on-page audit / re-index / SEO-fix steps. Used by
+    # /content/generate so generating a single piece doesn't re-crawl the site
+    # or wipe the multi-page embedding index built by the full audit.
+    content_only: bool = False
 
 
 @workflow.defn
@@ -40,6 +45,23 @@ class AuditWorkflow:
     async def run(self, payload: AuditWorkflowInput) -> dict:
         scrape_timeout = timedelta(minutes=2)
         ai_timeout = timedelta(minutes=5)
+
+        # Content-only fast path: generate from existing embeddings, no re-crawl.
+        if payload.content_only:
+            resolved_topic = (payload.content_topic or "").strip() or self._default_topic(
+                scraped_page={}, url=payload.url
+            )
+            generated_content_result = await workflow.execute_activity(
+                generate_project_content_activity,
+                args=[payload.project_id, resolved_topic, payload.content_type],
+                start_to_close_timeout=ai_timeout,
+            )
+            return {
+                "project_id": payload.project_id,
+                "url": payload.url,
+                "content_only": True,
+                "generated_content_result": generated_content_result,
+            }
 
         scraped_page = await workflow.execute_activity(
             scrape_website_activity,

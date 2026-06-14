@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import {
   CheckCircle2,
   Download,
   Gauge,
   Loader2,
+  Lock,
   PenTool,
   Rocket,
   ShieldCheck,
@@ -39,6 +41,8 @@ interface EngineBreakdown {
   prompts: number;
   responses?: number;
   attempted?: number;
+  errored?: number;
+  unavailable?: boolean;
   total_prompts?: number;
 }
 
@@ -62,6 +66,8 @@ interface AnalysisReport {
   strengths: string[];
   action_plan: ActionItem[];
   generated_at: string | null;
+  report_locked?: boolean;
+  summary?: string | null;
 }
 
 const CATEGORY_STYLE: Record<string, string> = {
@@ -110,6 +116,10 @@ function buildReportMarkdown(report: AnalysisReport): string {
     lines.push(`| Engine | Cited responses | Citation rate | Share of voice |`);
     lines.push(`| --- | --- | --- | --- |`);
     for (const e of report.per_engine) {
+      if (e.unavailable) {
+        lines.push(`| ${e.label} | unavailable | — | — |`);
+        continue;
+      }
       const responses = e.responses ?? e.prompts;
       const rate = e.cited_rate ?? (responses ? Math.round((e.cited / responses) * 100) : 0);
       lines.push(`| ${e.label} | ${e.cited}/${responses} | ${rate}% | ${e.share_of_voice}% |`);
@@ -265,7 +275,7 @@ export default function ProjectAnalysisPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {hasReport ? (
+            {hasReport && !report.report_locked ? (
               <button
                 type="button"
                 onClick={downloadReport}
@@ -349,6 +359,53 @@ export default function ProjectAnalysisPage() {
             );
           })()}
 
+          {report.report_locked ? (
+            <section className="rounded-[1.5rem] border border-primary/30 bg-card p-6 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Lock className="h-5 w-5 text-primary" />
+                <h2 className="text-lg font-semibold text-foreground">
+                  Your initial AI-visibility test
+                </h2>
+              </div>
+              {report.summary ? (
+                <p className="mt-3 text-sm leading-7 text-foreground">{report.summary}</p>
+              ) : null}
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[1.25rem] border border-border/70 bg-background p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Detected niche
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-foreground">{report.niche || "—"}</p>
+                </div>
+                <div className="rounded-[1.25rem] border border-border/70 bg-background p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Pages audited
+                  </p>
+                  <p className="mt-1 text-4xl font-semibold text-foreground">
+                    {report.pages_crawled}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 rounded-2xl border border-primary/30 bg-primary/5 p-5">
+                <div className="flex items-center gap-2">
+                  <Lock className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-semibold text-foreground">Unlock the full report</p>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Buy a package to see the per-engine citation breakdown, what&apos;s already working,
+                  your prioritized action plan, the prompts you&apos;re missing, the competitors
+                  winning citations, and a downloadable report.
+                </p>
+                <Link
+                  href="/settings/plan"
+                  className="btn-brand mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-xl px-6 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5"
+                >
+                  <Sparkles className="h-4 w-4" /> View packages
+                </Link>
+              </div>
+            </section>
+          ) : (
+          <>
           {/* ── PRIMARY: AI visibility, engine by engine ───────────────── */}
           <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
             <div className="flex items-center gap-2">
@@ -371,6 +428,25 @@ export default function ProjectAnalysisPage() {
                   const rate =
                     eng.cited_rate ?? (responses ? Math.round((eng.cited / responses) * 100) : 0);
                   const isAio = eng.engine === "google_aio";
+                  if (eng.unavailable) {
+                    return (
+                      <div
+                        key={eng.engine}
+                        className="rounded-[1.25rem] border border-border/70 bg-background p-5 opacity-70"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-foreground">{eng.label}</p>
+                          <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+                            Unavailable
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Couldn&apos;t reach this engine for this scan (rate-limited or no
+                          credits) — excluded from the score.
+                        </p>
+                      </div>
+                    );
+                  }
                   return (
                     <div
                       key={eng.engine}
@@ -417,7 +493,7 @@ export default function ProjectAnalysisPage() {
             <section className="rounded-[1.5rem] border border-success/30 bg-success/5 p-6 shadow-sm">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="h-5 w-5 text-success" />
-                <h2 className="text-lg font-semibold text-foreground">What's already working well</h2>
+                <h2 className="text-lg font-semibold text-foreground">What&apos;s already working well</h2>
               </div>
               {report.strengths.length > 0 ? (
                 <ul className="mt-4 grid gap-2">
@@ -495,7 +571,7 @@ export default function ProjectAnalysisPage() {
               <div className="flex items-center gap-2">
                 <Target className="h-5 w-5 text-destructive" />
                 <h2 className="text-lg font-semibold text-foreground">
-                  Prompts you're not cited for — generate content to win them
+                  Prompts you&apos;re not cited for — generate content to win them
                 </h2>
               </div>
               <div className="mt-5 grid gap-3">
@@ -625,6 +701,8 @@ export default function ProjectAnalysisPage() {
               </div>
             ) : null}
           </section>
+          </>
+          )}
         </>
       ) : null}
     </FeaturePageFrame>

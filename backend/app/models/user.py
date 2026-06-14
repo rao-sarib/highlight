@@ -42,10 +42,10 @@ class User(SQLModel, table=True):
     hashed_password: str = Field(nullable=False)
     full_name: str = Field(max_length=255, nullable=False)
     role: UserRole = Field(default=UserRole.VIEWER, nullable=False)
-    # Subscription plan key ("free" | "pro" | "agency"). Drives limits/quota.
-    # Defaults to the top tier for now; the pricing page (Phase 6) lets users
-    # switch tiers and demonstrates the limits.
-    plan: str = Field(default="agency", max_length=32, nullable=False)
+    # Subscription plan key ("free" | "pro" | "pro_plus" | "enterprise").
+    # Drives project/crawl/scan limits, engines, and which features are unlocked.
+    # New users start on the locked free tier and buy a package to unlock more.
+    plan: str = Field(default="free", max_length=32, nullable=False)
     # Rolling monthly scan usage (reset by month key) for quota enforcement.
     scans_used: int = Field(default=0, nullable=False)
     scans_period: str = Field(default="", max_length=7, nullable=False)  # "YYYY-MM"

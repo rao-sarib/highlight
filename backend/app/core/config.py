@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     TEMPORAL_NAMESPACE: str = "default"
     TEMPORAL_TASK_QUEUE: str = "highlight-seo-task-queue"
 
+    # ── Stripe (payments) ────────────────────────────────────────────────
+    # Secret key (sk_test_… for the demo) — enables hosted Checkout.
+    STRIPE_SECRET_KEY: str = ""
+    # Webhook signing secret (whsec_…) — verifies checkout.session.completed.
+    STRIPE_WEBHOOK_SECRET: str = ""
+    # Publishable key (pk_test_…) — only needed if you build a custom card form.
+    STRIPE_PUBLISHABLE_KEY: str = ""
+    # Where Stripe redirects back after checkout. Points at the frontend.
+    FRONTEND_BASE_URL: str = "http://localhost:3000"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

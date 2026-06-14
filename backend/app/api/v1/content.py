@@ -94,7 +94,10 @@ async def generate_content(
             url=project.url,
             content_topic=topic,
             content_type=body.content_type.value,
-            replace_embeddings=True,
+            # Generate from the project's existing embeddings — don't re-crawl
+            # the site or replace the multi-page index built by the full audit.
+            replace_embeddings=False,
+            content_only=True,
         ),
         id=workflow_id,
         task_queue=TEMPORAL_TASK_QUEUE,

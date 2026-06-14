@@ -75,6 +75,7 @@ export default function ProjectPromptsPage() {
 
   return (
     <FeaturePageFrame
+      feature="prompts"
       eyebrow="Prompt Optimization"
       title="Generate GEO-ready prompts"
       description="Feed a seed keyword into the OpenAI-powered optimization endpoint and turn it into search prompts tailored for AI answer engines."

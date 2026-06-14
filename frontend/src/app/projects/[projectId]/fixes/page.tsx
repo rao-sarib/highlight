@@ -97,6 +97,7 @@ export default function ProjectFixesPage() {
 
   return (
     <FeaturePageFrame
+      feature="fixes"
       eyebrow="SEO Fixes · Whole-site audit"
       title="Crawl & fix on-page SEO"
       description="Crawls your whole website (up to your plan's page limit), audits every page for on-page SEO issues, scores site health, and detects your niche. Results are saved — re-open anytime without re-crawling."

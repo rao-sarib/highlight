@@ -5,13 +5,7 @@ import { FormEvent, useState } from "react";
 
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
-import { useProjectStore } from "@/store/projectStore";
-
-interface ProjectResponse {
-  id: string;
-  name: string;
-  url: string;
-}
+import { useProjectStore, type ProjectSummary } from "@/store/projectStore";
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -31,7 +25,7 @@ export default function NewProjectPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await api.post<ProjectResponse>("/projects", {
+      const response = await api.post<ProjectSummary>("/projects", {
         name: name.trim(),
         url: url.trim(),
         niche: niche.trim() || null,

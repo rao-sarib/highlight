@@ -22,7 +22,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, require_feature
+from app.core.plans import FEATURE_ANALYTICS
 from app.db.session import get_db
 from app.models.content import Content
 from app.models.embedding import Embedding
@@ -98,7 +99,7 @@ def _get_owned_project_or_404(db: Session, project_id: uuid.UUID, user_id: uuid.
 def get_project_analytics(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature(FEATURE_ANALYTICS)),
 ) -> AnalyticsSummary:
     _get_owned_project_or_404(db, project_id, current_user.id)
 
@@ -156,7 +157,7 @@ def get_ga4_setup_info(
 async def get_project_ga4_analytics(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature(FEATURE_ANALYTICS)),
 ) -> GA4Summary:
     project = _get_owned_project_or_404(db, project_id, current_user.id)
 

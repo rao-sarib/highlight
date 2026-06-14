@@ -104,6 +104,7 @@ export default function ProjectContentGenerationPage() {
 
   return (
     <FeaturePageFrame
+      feature="content"
       eyebrow="Content Generation"
       title="Launch the Temporal content workflow"
       description="Send a topic and content type to the backend workflow, then review the generated content already saved for this project. The GEO type produces AI-citable sections (direct answer, key facts, FAQ, schema) designed to win citations in AI engines."

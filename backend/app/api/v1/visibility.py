@@ -22,7 +22,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, require_feature
+from app.core.plans import FEATURE_VISIBILITY, get_plan
 from app.models.project import Project
 from app.models.user import User
 from app.models.visibility_scan import VisibilityScan
@@ -80,6 +81,8 @@ class EngineSummary(BaseModel):
     cited_rate: float = 0.0
     responses: int = 0
     attempted: int = 0
+    errored: int = 0
+    unavailable: bool = False
     total_prompts: int = 0
 
 
@@ -150,7 +153,7 @@ def _scan_to_response(
 async def calculate_visibility_score(
     body: VisibilityRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature(FEATURE_VISIBILITY)),
 ) -> VisibilityResponse:
     project = _get_owned_project_or_404(db, body.project_id, current_user.id)
 
@@ -203,8 +206,11 @@ async def calculate_visibility_score(
         ) from exc
 
     # ── 2-3. Live engine scan + brand detection ─────────────────────────────
+    allowed_engines = list(get_plan(current_user.plan).engines)
     try:
-        scan_result = await geo_service.scan(prompts, project.url, project.name)
+        scan_result = await geo_service.scan(
+            prompts, project.url, project.name, allowed_engines=allowed_engines
+        )
     except GeoServiceError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

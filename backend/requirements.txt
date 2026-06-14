@@ -32,6 +32,9 @@ temporalio==1.9.0
 beautifulsoup4==4.12.3
 lxml==5.3.0
 
+# ── Payments (Stripe) ─────────────────────────────────────
+stripe==11.4.1
+
 # ── Utilities ─────────────────────────────────────────────
 python-dotenv==1.0.1
 

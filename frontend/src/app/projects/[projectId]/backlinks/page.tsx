@@ -79,6 +79,7 @@ export default function ProjectBacklinksPage() {
 
   return (
     <FeaturePageFrame
+      feature="backlinks"
       eyebrow="Backlinks"
       title="Find backlink opportunities"
       description="Finds pages that actually rank on Google for your keyword (real SERP prospects) and drafts personalized outreach emails — links from these pages boost both rankings and the sources AI engines cite."

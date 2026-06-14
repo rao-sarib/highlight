@@ -104,6 +104,7 @@ export default function ProjectAnalyticsPage() {
   const params = useParams<{ projectId: string }>();
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [analyticsLocked, setAnalyticsLocked] = useState(false);
 
   const [ga4PropertyIdInput, setGa4PropertyIdInput] = useState("");
   const [ga4Setup, setGa4Setup] = useState<GA4SetupInfo | null>(null);
@@ -121,9 +122,14 @@ export default function ProjectAnalyticsPage() {
         );
         setAnalytics(response.data);
       } catch (error) {
-        setErrorMessage(
-          error instanceof Error ? error.message : "Failed to load analytics.",
-        );
+        const msg = error instanceof Error ? error.message : "Failed to load analytics.";
+        // Free tier: analytics is a paid feature (402) — show a locked card,
+        // not a scary error banner.
+        if (/upgrade your plan|doesn't include this feature/i.test(msg)) {
+          setAnalyticsLocked(true);
+        } else {
+          setErrorMessage(msg);
+        }
       }
     };
 
@@ -218,7 +224,21 @@ export default function ProjectAnalyticsPage() {
         </div>
       ) : null}
 
-      {!analytics ? (
+      {analyticsLocked ? (
+        <section className="rounded-[1.5rem] border border-primary/30 bg-card p-6 text-sm shadow-sm">
+          <p className="font-semibold text-foreground">Analytics is a paid feature</p>
+          <p className="mt-2 text-muted-foreground">
+            Your current plan doesn&apos;t include analytics. Buy a package to unlock content &amp;
+            traffic metrics for this project.
+          </p>
+          <a
+            href="/settings/plan"
+            className="btn-brand mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5"
+          >
+            View packages
+          </a>
+        </section>
+      ) : !analytics ? (
         <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 text-sm text-muted-foreground shadow-sm">
           Loading analytics...
         </section>
@@ -312,7 +332,7 @@ export default function ProjectAnalyticsPage() {
                     labelFormatter={(value) =>
                       new Date(String(value)).toLocaleDateString()
                     }
-                    formatter={(value: number) => [value, "Content pieces"]}
+                    formatter={(value) => [Number(value), "Content pieces"]}
                   />
                   <Bar
                     dataKey="content_count"

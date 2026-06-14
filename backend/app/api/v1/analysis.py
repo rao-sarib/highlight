@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
-from app.api.dependencies import get_current_user, require_feature
+from app.api.dependencies import get_current_user
 from app.core.plans import FEATURE_ACTION_PLAN, get_plan
 from app.db.session import get_db
 from app.models.project import Project
@@ -79,6 +79,11 @@ class AnalysisReport(BaseModel):
     strengths: list[str] = []
     action_plan: list[ActionItem] = []
     generated_at: datetime | None = None
+    # ── Free-tier gating ─────────────────────────────────────────────
+    # When True the full report is locked: only the teaser fields above
+    # (scores, niche, summary) are populated; the rest require a paid plan.
+    report_locked: bool = False
+    summary: str | None = None
 
 
 def _build_strengths(
@@ -149,10 +154,12 @@ def latest_analysis(
 async def run_full_analysis(
     body: RunAnalysisRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_feature(FEATURE_ACTION_PLAN)),
+    current_user: User = Depends(get_current_user),
 ) -> AnalysisReport:
     project = _owned(db, body.project_id, current_user.id)
     plan = get_plan(current_user.plan)
+    # Free tier may RUN analysis (teaser score) but the full report is gated.
+    full_report = FEATURE_ACTION_PLAN in plan.features
 
     # 1. Whole-site audit (crawl + on-page + niche detect + index).
     max_pages = min(plan.max_crawl_pages, ORCHESTRATOR_MAX_PAGES)
@@ -181,7 +188,10 @@ async def run_full_analysis(
             prompts = await llm_service.generate_geo_prompts(
                 niche, count=body.prompt_count, audience=project.target_audience
             )
-            scan = await geo_service.scan(prompts, project.url, project.name)
+            scan = await geo_service.scan(
+                prompts, project.url, project.name,
+                allowed_engines=list(plan.engines),
+            )
 
             db.add(
                 VisibilityScan(
@@ -213,11 +223,46 @@ async def run_full_analysis(
         except GeoServiceError as exc:
             logger.warning("Visibility scan skipped in orchestrator: %s", exc)
 
+    severity_counts = audit.get("severity_counts", {}) or {}
+    seo_health = audit.get("seo_health_score")
+    pages_crawled = audit.get("pages_crawled", 0)
+
+    # One-line teaser summary shown to everyone (the only narrative free sees).
+    if share_of_voice is not None:
+        summary = (
+            f"{project.name} was cited in {cited_count} of {prompt_count} AI answer(s) "
+            f"we tested — an AI Share-of-Voice of {share_of_voice}%."
+        )
+    elif seo_health is not None:
+        summary = f"We audited {pages_crawled} page(s); SEO health score is {seo_health:.0f}/100."
+    else:
+        summary = f"We ran an initial scan of {project.name}."
+
+    # ── Free tier: return the teaser only (scores + niche + summary). ──
+    if not full_report:
+        report = AnalysisReport(
+            project_id=project.id,
+            niche=niche,
+            seo_health_score=seo_health,
+            pages_crawled=pages_crawled,
+            share_of_voice=share_of_voice,
+            cited_count=cited_count,
+            in_sources_count=in_sources_count,
+            prompt_count=prompt_count,
+            engines_used=engines_used,
+            report_locked=True,
+            summary=summary,
+            generated_at=datetime.now(timezone.utc),
+        )
+        upsert_cached(db, project.id, FEATURE, "", report.model_dump(mode="json"))
+        return report
+
+    # ── Paid tiers: the full report. ──
     # 4. Action plan from all signals.
     try:
         action_plan = await llm_service.generate_action_plan(
             niche=niche,
-            seo_health=audit.get("seo_health_score"),
+            seo_health=seo_health,
             top_issues=audit.get("top_issues", []),
             gap_prompts=gap_prompts,
             cited_prompts=cited_prompts,
@@ -227,11 +272,10 @@ async def run_full_analysis(
         logger.warning("Action plan generation failed: %s", exc)
         action_plan = []
 
-    severity_counts = audit.get("severity_counts", {}) or {}
     strengths = _build_strengths(
-        seo_health=audit.get("seo_health_score"),
+        seo_health=seo_health,
         severity_counts=severity_counts,
-        pages_crawled=audit.get("pages_crawled", 0),
+        pages_crawled=pages_crawled,
         per_engine=per_engine,
         cited_prompts=cited_prompts,
         in_sources_count=in_sources_count,
@@ -240,8 +284,8 @@ async def run_full_analysis(
     report = AnalysisReport(
         project_id=project.id,
         niche=niche,
-        seo_health_score=audit.get("seo_health_score"),
-        pages_crawled=audit.get("pages_crawled", 0),
+        seo_health_score=seo_health,
+        pages_crawled=pages_crawled,
         total_issues=audit.get("total_issues", 0),
         top_issues=audit.get("top_issues", []),
         severity_counts=severity_counts,
@@ -256,6 +300,7 @@ async def run_full_analysis(
         competitors=competitors,
         strengths=strengths,
         action_plan=[ActionItem(**a) for a in action_plan],
+        summary=summary,
         generated_at=datetime.now(timezone.utc),
     )
 

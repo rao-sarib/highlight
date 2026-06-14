@@ -12,7 +12,8 @@ from pydantic import BaseModel
 from sqlmodel import Session
 from temporalio.client import Client
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import require_feature
+from app.core.plans import FEATURE_REFRESH
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.user import User
@@ -53,7 +54,7 @@ async def _get_temporal_client() -> Client:
 async def schedule_content_refresh(
     body: RefreshWorkflowRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature(FEATURE_REFRESH)),
 ) -> RefreshWorkflowResponse:
     project = _get_owned_project_or_404(db, body.project_id, current_user.id)
     try:

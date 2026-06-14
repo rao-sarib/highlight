@@ -82,6 +82,7 @@ export default function ProjectCompetitorPage() {
 
   return (
     <FeaturePageFrame
+      feature="competitors"
       eyebrow="Competitor Benchmarking"
       title="Compare your project against a live competitor"
       description="Submit a competitor URL and target keyword to calculate relative density, surface semantic opportunities, and see real Google SERP rankings (requires Serper API key)."

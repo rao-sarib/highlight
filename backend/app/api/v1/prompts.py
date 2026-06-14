@@ -14,7 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, require_feature
+from app.core.plans import FEATURE_PROMPTS
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.user import User
@@ -52,7 +53,7 @@ def _owned(db: Session, project_id: uuid.UUID, user_id: uuid.UUID) -> Project:
 async def optimize_prompts(
     body: PromptOptimizationRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature(FEATURE_PROMPTS)),
 ) -> PromptOptimizationResponse:
     project = _owned(db, body.project_id, current_user.id)
     keyword = await resolve_keyword(project, body.keyword)

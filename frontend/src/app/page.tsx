@@ -249,7 +249,7 @@ export default function HomePage() {
               Everything you need to win in search — old and new.
             </h2>
             <p className="mt-4 text-base leading-7 text-muted-foreground">
-              Find out where you stand, fix what's holding you back, and publish the content that
+              Find out where you stand, fix what&apos;s holding you back, and publish the content that
               gets picked up. No switching between five different tools.
             </p>
           </Reveal>
@@ -282,7 +282,7 @@ export default function HomePage() {
                 From a URL to a clear plan in minutes.
               </h2>
               <p className="mt-4 text-base leading-7 text-muted-foreground">
-                You don't fill out forms or wire up tools. Add your site and Highlight does the
+                You don&apos;t fill out forms or wire up tools. Add your site and Highlight does the
                 analysis, then hands you the work in priority order.
               </p>
               <Link

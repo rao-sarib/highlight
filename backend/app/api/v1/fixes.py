@@ -20,8 +20,8 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 from temporalio.client import Client
 
-from app.api.dependencies import get_current_user
-from app.core.plans import get_plan
+from app.api.dependencies import get_current_user, require_feature
+from app.core.plans import FEATURE_FIXES, get_plan
 from app.db.session import get_db
 from app.models.page_audit import PageAudit
 from app.models.project import Project
@@ -128,7 +128,7 @@ def _read_stored_audit(db: Session, project: Project) -> SiteAuditSummary:
 async def audit_site(
     body: FixesWorkflowRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature(FEATURE_FIXES)),
 ) -> SiteAuditSummary:
     project = _get_owned_project_or_404(db, body.project_id, current_user.id)
     plan = get_plan(current_user.plan)
@@ -161,7 +161,7 @@ async def _get_temporal_client() -> Client:
 async def run_seo_fixes_workflow(
     body: FixesWorkflowRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature(FEATURE_FIXES)),
 ) -> FixesWorkflowResponse:
     project = _get_owned_project_or_404(db, body.project_id, current_user.id)
     try:

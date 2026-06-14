@@ -39,6 +39,7 @@ export default function ProjectRefreshPage() {
 
   return (
     <FeaturePageFrame
+      feature="refresh"
       eyebrow="Content Refresh"
       title="Schedule monthly re-audits"
       description="Create a recurring Temporal workflow that refreshes and re-audits stale content every 30 days."

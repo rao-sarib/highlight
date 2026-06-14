@@ -63,6 +63,8 @@ interface EngineSummary {
   cited: number;
   in_sources: number;
   prompts: number;
+  errored?: number;
+  unavailable?: boolean;
 }
 
 interface VisibilityResponse {
@@ -202,6 +204,7 @@ export default function ProjectVisibilityPage() {
 
   return (
     <FeaturePageFrame
+      feature="visibility"
       eyebrow="AI Visibility · GEO"
       title="AI Share of Voice"
       description="Asks real buyer questions to multiple live AI answer engines (Perplexity, ChatGPT, Gemini, and Google AI Overview when configured) and measures how often your brand is cited — with a per-engine breakdown and the competitors cited instead."
@@ -297,7 +300,7 @@ export default function ProjectVisibilityPage() {
                     borderRadius: 12,
                     fontSize: 12,
                   }}
-                  formatter={(v: number) => [`${v}%`, "Share of Voice"]}
+                  formatter={(v) => [`${Number(v)}%`, "Share of Voice"]}
                 />
                 <Area type="monotone" dataKey="sov" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#sovFill)" />
               </AreaChart>
@@ -367,23 +370,40 @@ export default function ProjectVisibilityPage() {
                   By engine
                 </p>
                 <div className="mt-4 grid gap-3.5">
-                  {result.per_engine.map((eng) => (
-                    <div key={eng.engine}>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium text-foreground">{eng.label}</span>
-                        <span className="font-semibold text-foreground">{eng.share_of_voice}%</span>
+                  {result.per_engine.map((eng) =>
+                    eng.unavailable ? (
+                      <div key={eng.engine} className="opacity-70">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium text-foreground">{eng.label}</span>
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                            Unavailable
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Couldn&apos;t reach this engine for this scan (rate-limited or no
+                          credits) — not counted in the score.
+                        </p>
                       </div>
-                      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-brand-gradient"
-                          style={{ width: `${Math.min(eng.share_of_voice, 100)}%` }}
-                        />
+                    ) : (
+                      <div key={eng.engine}>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium text-foreground">{eng.label}</span>
+                          <span className="font-semibold text-foreground">
+                            {eng.share_of_voice}%
+                          </span>
+                        </div>
+                        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-brand-gradient"
+                            style={{ width: `${Math.min(eng.share_of_voice, 100)}%` }}
+                          />
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {eng.cited}/{eng.prompts} prompts cited
+                        </p>
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {eng.cited}/{eng.prompts} prompts cited
-                      </p>
-                    </div>
-                  ))}
+                    )
+                  )}
                 </div>
               </div>
             ) : null}

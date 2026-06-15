@@ -14,6 +14,7 @@ engines retrieve — so the same outreach supports both SEO and AI visibility.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime
 from urllib.parse import urlparse
@@ -36,7 +37,50 @@ from app.services.serper_service import serper_service
 router = APIRouter(prefix="/backlinks", tags=["Backlinks"])
 
 FEATURE = "backlinks"
-MAX_PROSPECTS = 5
+# Real link-building works at scale, so we surface up to a few hundred prospects.
+MAX_PROSPECTS = 200
+# AI writes personalised outreach for the strongest prospects; the rest get a
+# clean ready-to-edit template (keeps it fast + cheap even at hundreds).
+AI_EMAIL_COUNT = 12
+
+
+def _variation_queries(keyword: str) -> list[str]:
+    """Expand one keyword into related searches to widen prospect discovery."""
+    k = keyword.strip()
+    return [
+        k,
+        f"best {k}",
+        f"{k} guide",
+        f"top {k}",
+        f"{k} tools",
+        f"{k} blog",
+        f"{k} resources",
+        f"{k} tutorial",
+        f"{k} alternatives",
+        f"{k} examples",
+        f"{k} for beginners",
+        f"{k} tips",
+        f"how to {k}",
+        f"{k} comparison",
+        f"{k} review",
+        f"{k} services",
+        f"{k} list",
+        f"learn {k}",
+    ]
+
+
+def _template_email(project_name: str, project_url: str, keyword: str, host: str, title: str | None) -> str:
+    page = title or host
+    return (
+        f"Subject: Collaboration idea around {keyword}\n\n"
+        f"Hi {host} team,\n\n"
+        f"I came across your page \"{page}\" while researching {keyword}, and really valued the "
+        f"coverage. I run {project_name} ({project_url}), where we publish in-depth resources on "
+        f"{keyword}.\n\n"
+        f"I'd love to explore a relevant mention, resource link, or guest contribution that adds "
+        f"genuine value for your readers. Open to a quick chat?\n\n"
+        f"Best regards,\nThe {project_name} team"
+    )
 
 
 class BacklinkOpportunityRequest(BaseModel):
@@ -59,6 +103,7 @@ class BacklinkOpportunityResponse(BaseModel):
     project_id: uuid.UUID
     target_keyword: str
     opportunities: list[BacklinkOpportunity] = []
+    total_found: int = 0
     prospect_source: str = "serp"  # serp | page_links
     cached: bool = False
     generated_at: datetime | None = None
@@ -113,37 +158,50 @@ async def find_backlink_opportunities(
                 **cached.payload, cached=True, generated_at=cached.updated_at
             )
 
-    # ── Discover prospects ──────────────────────────────────────────────────
-    serp_positions: dict[str, int] = {}
-    candidate_urls: list[str] = []
-    seen_hosts: set[str] = set()
+    # ── Discover prospects at scale ─────────────────────────────────────────
+    # Aggregate many real ranking pages across the keyword + related searches,
+    # de-duplicated by host so the list reads like a real prospect database.
+    candidates: list[dict] = []
+    seen_urls: set[str] = set()
+    host_counts: dict[str, int] = {}
     prospect_source = "page_links"
+    MAX_PER_HOST = 6  # diversity cap so one big site doesn't flood the list
 
-    def _add_candidate(url: str, position: int | None = None) -> None:
-        normalized = url.strip()
+    def _add_candidate(url: str, title: str | None, snippet: str, position: int | None) -> None:
+        normalized = (url or "").strip()
         host = _host_of(normalized)
-        if not normalized or not host or host == project_host or host in seen_hosts:
+        if not normalized or not host or host == project_host or normalized in seen_urls:
             return
-        seen_hosts.add(host)
-        candidate_urls.append(normalized)
-        if position is not None:
-            serp_positions[normalized] = position
+        if host_counts.get(host, 0) >= MAX_PER_HOST:
+            return
+        seen_urls.add(normalized)
+        host_counts[host] = host_counts.get(host, 0) + 1
+        candidates.append(
+            {"url": normalized, "host": host, "title": title, "snippet": snippet, "position": position}
+        )
 
-    # 1. User-supplied URLs always get first priority.
+    # 1. User-supplied URLs first (highest intent).
     for url in body.prospect_urls:
-        _add_candidate(url)
+        _add_candidate(url, None, "", None)
 
-    # 2. Real Google SERP results for the keyword (when Serper is configured).
-    serp_result = await serper_service.search(keyword, num=10)
-    if serp_result.error is None and serp_result.organic:
+    # 2. Real Google SERP across the keyword + related queries (parallel).
+    queries = _variation_queries(keyword)
+    results = await asyncio.gather(
+        *[serper_service.search(q, num=100 if i == 0 else 30) for i, q in enumerate(queries)],
+        return_exceptions=True,
+    )
+    for i, res in enumerate(results):
+        if isinstance(res, BaseException) or res.error or not res.organic:
+            continue
         prospect_source = "serp"
-        for item in serp_result.organic:
-            if len(candidate_urls) >= MAX_PROSPECTS:
+        for item in res.organic:
+            if len(candidates) >= MAX_PROSPECTS:
                 break
-            _add_candidate(item.url, position=item.position)
+            # Only trust the rank from the primary keyword query.
+            _add_candidate(item.url, item.title, item.snippet, item.position if i == 0 else None)
 
-    # 3. Legacy fallback: external links on the project's own page.
-    if len(candidate_urls) < MAX_PROSPECTS and prospect_source == "page_links":
+    # 3. Fallback: external links on the project's own page (Serper unavailable).
+    if not candidates and prospect_source == "page_links":
         project_page = await scraper_service.scrape_url(project.url)
         if project_page.error:
             raise HTTPException(
@@ -151,51 +209,57 @@ async def find_backlink_opportunities(
                 detail=f"Failed to scrape project site: {project_page.error}",
             )
         for link in project_page.links:
-            if len(candidate_urls) >= MAX_PROSPECTS:
+            if len(candidates) >= MAX_PROSPECTS:
                 break
             if not link.is_internal:
-                _add_candidate(link.href)
+                _add_candidate(link.href, None, "", None)
 
-    candidate_urls = candidate_urls[:MAX_PROSPECTS]
+    candidates = candidates[:MAX_PROSPECTS]
 
-    # ── Build outreach for each prospect ────────────────────────────────────
-    opportunities: list[BacklinkOpportunity] = []
-    for candidate_url in candidate_urls:
-        candidate_page = await scraper_service.scrape_url(candidate_url)
-        if candidate_page.error:
-            continue
-
-        candidate_host = _host_of(candidate_url)
-        position = serp_positions.get(candidate_url)
-        if position is not None:
-            rationale = (
-                f"{candidate_host} ranks #{position} on Google for '{keyword}' — a link or "
-                "mention from it strengthens both rankings and the sources AI engines cite."
-            )
-        else:
-            rationale = (
-                f"{candidate_host} publishes related content and could be relevant for the "
-                f"keyword '{keyword}'."
-            )
-
-        outreach_email = await llm_service.generate_custom_text(
+    # ── Outreach: AI-personalised for the top prospects, templated for the rest ─
+    async def _ai_email(cand: dict) -> str:
+        return await llm_service.generate_custom_text(
             system_instruction=(
                 "You write concise, professional backlink outreach emails. Return only the "
                 "final email with a subject line, greeting, body, and sign-off."
             ),
             user_prompt=(
-                f"Write a personalized outreach email to {candidate_host}. "
+                f"Write a personalized outreach email to {cand['host']}. "
                 f"Project name: {project.name}. Project URL: {project.url}. "
                 f"Project topic keyword: {keyword}. "
-                f"Prospect page title: {candidate_page.title or 'N/A'}. "
-                f"Prospect page summary: {candidate_page.body_text[:500]}."
+                f"Prospect page title: {cand.get('title') or 'N/A'}. "
+                f"Prospect page summary: {(cand.get('snippet') or '')[:400]}."
             ),
             temperature=0.5,
         )
+
+    top = candidates[:AI_EMAIL_COUNT]
+    ai_emails = await asyncio.gather(*[_ai_email(c) for c in top], return_exceptions=True)
+
+    opportunities: list[BacklinkOpportunity] = []
+    for idx, cand in enumerate(candidates):
+        host = cand["host"]
+        position = cand["position"]
+        if position is not None:
+            rationale = (
+                f"{host} ranks #{position} on Google for '{keyword}' — a link or mention from it "
+                "strengthens both rankings and the sources AI engines cite."
+            )
+        else:
+            rationale = (
+                f"{host} ranks for '{keyword}'-related searches — a mention or link supports both "
+                "SEO and AI citations."
+            )
+
+        if idx < len(top) and not isinstance(ai_emails[idx], BaseException):
+            outreach_email = ai_emails[idx]
+        else:
+            outreach_email = _template_email(project.name, project.url, keyword, host, cand.get("title"))
+
         opportunities.append(
             BacklinkOpportunity(
-                prospect_url=candidate_url,
-                prospect_title=candidate_page.title,
+                prospect_url=cand["url"],
+                prospect_title=cand.get("title"),
                 rationale=rationale,
                 outreach_email=outreach_email,
                 serp_position=position,
@@ -206,6 +270,7 @@ async def find_backlink_opportunities(
         project_id=project.id,
         target_keyword=keyword,
         opportunities=opportunities,
+        total_found=len(opportunities),
         prospect_source=prospect_source,
     )
     payload = response.model_dump(mode="json")

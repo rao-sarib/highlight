@@ -24,6 +24,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.services import stripe_service
 from app.services.quota_service import usage_for
+from app.services.rbac_service import get_role_features
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,9 @@ class BillingMe(BaseModel):
     projects_used: int
     projects_limit: int
     stripe_enabled: bool
+    # RBAC role + the features that role permits (for frontend role-gating).
+    role: str
+    role_features: list[str]
 
 
 class SwitchPlanRequest(BaseModel):
@@ -97,6 +101,8 @@ def _me(db: Session, user: User) -> BillingMe:
         projects_used=projects_used,
         projects_limit=get_plan(user.plan).max_projects,
         stripe_enabled=stripe_service.is_configured(),
+        role=getattr(user.role, "value", str(user.role)),
+        role_features=get_role_features(db, user.role),
     )
 
 
@@ -174,4 +180,14 @@ def dev_activate_plan(
     if key not in PLANS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown plan.")
     _apply_plan(db, current_user, key)
+    return _me(db, current_user)
+
+
+@router.post("/cancel", response_model=BillingMe, summary="Deactivate paid plan (back to Free)")
+def cancel_plan(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> BillingMe:
+    """Downgrade the user to the free tier (deactivate their paid package)."""
+    _apply_plan(db, current_user, "free")
     return _me(db, current_user)

@@ -14,13 +14,20 @@ class Settings(BaseSettings):
 
     SECRET_KEY: str = "super-secret-change-me-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    # 7 days — long-lived sessions so users don't get "could not validate
+    # credentials" mid-session (the frontend also logs out + redirects on 401).
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080
 
     OPENAI_API_KEY: str = ""
 
     # Serper API — real Google SERP rankings for Competitor Benchmarking
     # Get key at https://serper.dev (free tier: 2500 queries/month)
     SERPER_API_KEY: str = ""
+
+    # SerpApi (serpapi.com) — Google AI Overview data. Serper does NOT expose
+    # AI Overviews, so the "Google AI Overview" engine uses SerpApi instead.
+    # Get key at https://serpapi.com (free tier: 100 searches/month).
+    SERPAPI_API_KEY: str = ""
 
     # Perplexity API — citation-based AI Visibility scoring
     # Get key at https://www.perplexity.ai/settings/api
@@ -40,6 +47,12 @@ class Settings(BaseSettings):
     TEMPORAL_SERVER_URL: str = "localhost:7233"
     TEMPORAL_NAMESPACE: str = "default"
     TEMPORAL_TASK_QUEUE: str = "highlight-seo-task-queue"
+
+    # ── Admin panel (separate /adminpanel login) ─────────────────────────
+    # Seeded into the admins table on first startup if no admin exists.
+    # Change the password after first login (or set these before first run).
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "highlight-admin"
 
     # ── Stripe (payments) ────────────────────────────────────────────────
     # Secret key (sk_test_… for the demo) — enables hosted Checkout.

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "http://15.207.143.143:8000/api/:path*"
+    }
+  ]
+}

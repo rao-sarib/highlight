@@ -15,8 +15,20 @@ from sqlmodel import Field, Relationship, SQLModel
 
 # ── Enum ──────────────────────────────────────────────────
 class UserRole(str, enum.Enum):
-    """Roles governing RBAC across the platform."""
+    """Roles governing RBAC across the platform.
 
+    The three signup-selectable roles are SEO_EXPERT, CONTENT_WRITER and
+    ANALYTICS_MANAGER. The original ADMIN/SEO_MANAGER/VIEWER values are kept for
+    backward compatibility with accounts created before the RBAC revamp (they
+    map to full access). New native-enum values are added via ALTER TYPE in the
+    app lifespan migration.
+    """
+
+    # Current RBAC roles (chosen at signup).
+    SEO_EXPERT = "seo_expert"
+    CONTENT_WRITER = "content_writer"
+    ANALYTICS_MANAGER = "analytics_manager"
+    # Legacy roles (pre-RBAC-revamp) — retained so existing rows stay valid.
     ADMIN = "admin"
     SEO_MANAGER = "seo_manager"
     VIEWER = "viewer"
@@ -42,6 +54,10 @@ class User(SQLModel, table=True):
     hashed_password: str = Field(nullable=False)
     full_name: str = Field(max_length=255, nullable=False)
     role: UserRole = Field(default=UserRole.VIEWER, nullable=False)
+    # Email verification. New signups are created unverified and must click the
+    # link emailed to them before they can log in. (Existing rows are backfilled
+    # to True by the lifespan migration so they are never locked out.)
+    is_verified: bool = Field(default=False, nullable=False)
     # Subscription plan key ("free" | "pro" | "pro_plus" | "enterprise").
     # Drives project/crawl/scan limits, engines, and which features are unlocked.
     # New users start on the locked free tier and buy a package to unlock more.

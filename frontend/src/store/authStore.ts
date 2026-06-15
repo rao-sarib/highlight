@@ -5,7 +5,13 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import api, { AUTH_TOKEN_KEY } from "@/lib/api";
 
-export type UserRole = "admin" | "seo_manager" | "viewer";
+export type UserRole =
+  | "seo_expert"
+  | "content_writer"
+  | "analytics_manager"
+  | "admin"
+  | "seo_manager"
+  | "viewer";
 
 export interface AuthUser {
   id: string;
@@ -14,6 +20,13 @@ export interface AuthUser {
   role: UserRole;
   created_at: string;
   updated_at: string;
+}
+
+export interface SignupResult {
+  verification_required: boolean;
+  emailed: boolean;
+  message: string;
+  dev_verify_url?: string | null;
 }
 
 interface AuthState {
@@ -29,7 +42,11 @@ interface AuthState {
     email: string;
     password: string;
     full_name: string;
-  }) => Promise<AuthUser>;
+    role: UserRole;
+  }) => Promise<SignupResult>;
+  /** Store a freshly-issued token and load the current user (used by login,
+   *  email verification, and password reset). */
+  establishSession: (token: string) => Promise<AuthUser>;
   fetchCurrentUser: () => Promise<AuthUser | null>;
 }
 
@@ -77,38 +94,30 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
         });
       },
+      establishSession: async (token) => {
+        syncTokenStorage(token);
+        const userResponse = await api.get<AuthUser>("/users/me");
+        get().setSession({ token, user: userResponse.data });
+        return userResponse.data;
+      },
       login: async ({ email, password }) => {
         const tokenResponse = await api.post<TokenResponse>("/auth/login", {
           email,
           password,
         });
-
-        syncTokenStorage(tokenResponse.data.access_token);
-
-        const userResponse = await api.get<AuthUser>("/users/me");
-        get().setSession({
-          token: tokenResponse.data.access_token,
-          user: userResponse.data,
-        });
-
-        return userResponse.data;
+        return get().establishSession(tokenResponse.data.access_token);
       },
-      signup: async ({ email, password, full_name }) => {
-        const tokenResponse = await api.post<TokenResponse>("/auth/signup", {
+      signup: async ({ email, password, full_name, role }) => {
+        // Signup no longer logs the user in — it creates an unverified account
+        // and emails a verification link. The page shows a "check your email"
+        // state based on this result.
+        const response = await api.post<SignupResult>("/auth/signup", {
           email,
           password,
           full_name,
+          role,
         });
-
-        syncTokenStorage(tokenResponse.data.access_token);
-
-        const userResponse = await api.get<AuthUser>("/users/me");
-        get().setSession({
-          token: tokenResponse.data.access_token,
-          user: userResponse.data,
-        });
-
-        return userResponse.data;
+        return response.data;
       },
       fetchCurrentUser: async () => {
         const token = get().token;

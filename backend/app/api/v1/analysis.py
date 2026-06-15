@@ -30,6 +30,8 @@ from app.services.cache_service import get_latest_for_feature, upsert_cached
 from app.services.geo_service import GeoServiceError, geo_service
 from app.services.llm_service import llm_service
 from app.services.quota_service import consume_scan
+from app.services.rbac_service import assert_role_allows
+from app.services.score_service import record_score
 from app.services.site_audit_service import run_site_audit
 
 logger = logging.getLogger(__name__)
@@ -38,12 +40,12 @@ router = APIRouter(prefix="/analysis", tags=["Full Analysis"])
 
 FEATURE = "analysis"
 ORCHESTRATOR_MAX_PAGES = 12  # keep the synchronous run responsive
-ORCHESTRATOR_PROMPTS = 3
+ORCHESTRATOR_PROMPTS = 5
 
 
 class RunAnalysisRequest(BaseModel):
     project_id: uuid.UUID
-    prompt_count: int = Field(default=ORCHESTRATOR_PROMPTS, ge=2, le=5)
+    prompt_count: int = Field(default=ORCHESTRATOR_PROMPTS, ge=2, le=8)
 
 
 class ActionItem(BaseModel):
@@ -147,7 +149,13 @@ def latest_analysis(
     row = get_latest_for_feature(db, project_id, FEATURE)
     if row is None:
         return None
-    return AnalysisReport(**row.payload)
+    report = AnalysisReport(**row.payload)
+    # If the cached report is a free-tier teaser but the user now has a paid plan
+    # (which includes the full report), don't show the upgrade wall — return None
+    # so the page prompts a fresh run that produces the full report.
+    if report.report_locked and FEATURE_ACTION_PLAN in get_plan(current_user.plan).features:
+        return None
+    return report
 
 
 @router.post("/run", response_model=AnalysisReport, summary="Run the full SEO + GEO analysis")
@@ -156,6 +164,8 @@ async def run_full_analysis(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> AnalysisReport:
+    # Role gate first: only roles permitted the full report may run analysis.
+    assert_role_allows(db, current_user, FEATURE_ACTION_PLAN)
     project = _owned(db, body.project_id, current_user.id)
     plan = get_plan(current_user.plan)
     # Free tier may RUN analysis (teaser score) but the full report is gated.
@@ -237,6 +247,9 @@ async def run_full_analysis(
         summary = f"We audited {pages_crawled} page(s); SEO health score is {seo_health:.0f}/100."
     else:
         summary = f"We ran an initial scan of {project.name}."
+
+    # Record a progress snapshot (both scores) for the Analytics history graph.
+    record_score(db, project.id, seo_health=seo_health, ai_visibility=share_of_voice)
 
     # ── Free tier: return the teaser only (scores + niche + summary). ──
     if not full_report:

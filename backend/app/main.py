@@ -6,12 +6,16 @@ FastAPI application entry-point.
 • Configures CORS for the Next.js frontend
 """
 
+import logging
 from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlmodel import SQLModel, text
+
+logger = logging.getLogger("app.main")
 
 from app.db.session import engine
 
@@ -23,6 +27,13 @@ from app.models.embedding import Embedding  # noqa: F401
 from app.models.visibility_scan import VisibilityScan  # noqa: F401
 from app.models.page_audit import PageAudit  # noqa: F401
 from app.models.feature_cache import FeatureCache  # noqa: F401
+from app.models.admin import Admin  # noqa: F401
+from app.models.site_content import SiteContent  # noqa: F401
+from app.models.smtp_settings import SmtpSettings  # noqa: F401
+from app.models.role_permission import RolePermission  # noqa: F401
+from app.models.app_setting import AppSetting  # noqa: F401
+from app.models.score_snapshot import ScoreSnapshot  # noqa: F401
+from app.models.contact_message import ContactMessage  # noqa: F401
 
 # ── Import routers ───────────────────────────────────────
 from app.api.v1.auth import router as auth_router
@@ -34,11 +45,14 @@ from app.api.v1.competitors import router as competitors_router
 from app.api.v1.content import router as content_router
 from app.api.v1.fixes import router as fixes_router
 from app.api.v1.lsi import router as lsi_router
+from app.api.v1.keywords import router as keywords_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.prompts import router as prompts_router
 from app.api.v1.refresh import router as refresh_router
 from app.api.v1.users import router as users_router
 from app.api.v1.visibility import router as visibility_router
+from app.api.v1.admin import router as admin_router
+from app.api.v1.site import router as site_router
 
 
 # ── Lifespan (replaces deprecated on_event) ──────────────
@@ -77,6 +91,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS plan VARCHAR(32) NOT NULL DEFAULT 'agency'",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS scans_used INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS scans_period VARCHAR(7) NOT NULL DEFAULT ''",
+            # Users: email verification. DEFAULT true backfills existing accounts
+            # as verified (never locked out); new signups insert false explicitly.
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT true",
             # Visibility scans: multi-engine breakdown (added in the multi-engine upgrade).
             "ALTER TABLE visibility_scans ADD COLUMN IF NOT EXISTS engines_used JSON NOT NULL DEFAULT '[]'",
             "ALTER TABLE visibility_scans ADD COLUMN IF NOT EXISTS per_engine JSON NOT NULL DEFAULT '[]'",
@@ -85,12 +102,60 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         ):
             conn.execute(text(ddl))
 
-    # Enum migration: the GEO content type was added after the initial release.
-    # On a fresh database create_all already includes it; on existing databases
-    # the native Postgres enum needs the extra value.
+    # Enum migration: GEO content type + the new RBAC roles were added after the
+    # initial release. On a fresh database create_all already includes them; on
+    # existing databases the native Postgres enums need the extra values.
     with engine.begin() as conn:
         conn.execute(text("ALTER TYPE contenttype ADD VALUE IF NOT EXISTS 'GEO'"))
+        # New RBAC roles (native enum stores the member NAMES, uppercase).
+        for role_name in ("SEO_EXPERT", "CONTENT_WRITER", "ANALYTICS_MANAGER"):
+            conn.execute(text(f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{role_name}'"))
+
+    # Seed admin account, role permissions, CMS content, and SMTP row.
+    _seed_initial_data()
     yield
+
+
+def _seed_initial_data() -> None:
+    """Create the default admin, RBAC permissions, landing content, SMTP row."""
+    from sqlmodel import Session, select
+
+    from app.core.config import settings
+    from app.core.default_content import DEFAULT_LANDING
+    from app.core.security import hash_password
+    from app.models.admin import Admin as AdminModel
+    from app.models.site_content import SINGLETON_ID as CONTENT_ID, SiteContent as SiteContentModel
+    from app.models.smtp_settings import SINGLETON_ID as SMTP_ID, SmtpSettings as SmtpModel
+    from app.services.rbac_service import seed_role_permissions
+
+    with Session(engine) as session:
+        # Default admin (only if none exists yet).
+        if session.exec(select(AdminModel)).first() is None:
+            session.add(
+                AdminModel(
+                    username=settings.ADMIN_USERNAME.strip() or "admin",
+                    hashed_password=hash_password(settings.ADMIN_PASSWORD or "highlight-admin"),
+                )
+            )
+            session.commit()
+
+        # Default landing content.
+        if session.get(SiteContentModel, CONTENT_ID) is None:
+            session.add(SiteContentModel(id=CONTENT_ID, content=dict(DEFAULT_LANDING)))
+            session.commit()
+
+        # Default SMTP row (disabled until configured).
+        if session.get(SmtpModel, SMTP_ID) is None:
+            session.add(SmtpModel(id=SMTP_ID))
+            session.commit()
+
+        # Default role -> features permissions.
+        seed_role_permissions(session)
+
+        # Apply any admin-set API key overrides (DB > env) at runtime.
+        from app.services import runtime_config
+
+        runtime_config.load_all(session)
 
 
 # ── App ──────────────────────────────────────────────────
@@ -110,11 +175,26 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
     ],
-    allow_origin_regex=r"https://.*\.netlify\.app",
+    allow_origin_regex=r"https://.*\.(netlify|vercel)\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Global error handler ─────────────────────────────────
+# Any unhandled exception is turned into a clean JSON 500 that flows back
+# through the CORS middleware. Without this, an unexpected error can reset the
+# connection, which the browser reports as "Cannot reach the backend" instead
+# of a readable message.
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Something went wrong on our end. Please try again in a moment."},
+    )
+
 
 # ── Routers ──────────────────────────────────────────────
 app.include_router(auth_router, prefix="/api/v1")
@@ -126,11 +206,14 @@ app.include_router(competitors_router, prefix="/api/v1")
 app.include_router(content_router, prefix="/api/v1")
 app.include_router(fixes_router, prefix="/api/v1")
 app.include_router(lsi_router, prefix="/api/v1")
+app.include_router(keywords_router, prefix="/api/v1")
 app.include_router(projects_router, prefix="/api/v1")
 app.include_router(prompts_router, prefix="/api/v1")
 app.include_router(refresh_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(visibility_router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1")
+app.include_router(site_router, prefix="/api/v1")
 
 
 # ── Health check ─────────────────────────────────────────

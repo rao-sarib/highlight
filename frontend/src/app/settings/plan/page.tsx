@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Check, CreditCard, Loader2, Lock, Sparkles } from "lucide-react";
 
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
 import { type BillingMe, type BillingPlan, clearBillingCache, fetchBillingMe } from "@/lib/billing";
+import { toast } from "@/store/toastStore";
 
 const FEATURE_LABELS: Record<string, string> = {
   audit: "Whole-site SEO audit",
@@ -43,11 +45,17 @@ const ALL_FEATURES = [
 ];
 
 export default function PlanPage() {
+  const router = useRouter();
   const [plans, setPlans] = useState<BillingPlan[]>([]);
   const [me, setMe] = useState<BillingMe | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("");
+
+  const nextAfter = (): string => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("next") || "";
+  };
 
   const load = async () => {
     const [plansRes, meData] = await Promise.all([
@@ -75,28 +83,26 @@ export default function PlanPage() {
       const res = await api.post<BillingMe>("/billing/dev-activate", { plan_key: key });
       setMe(res.data);
       clearBillingCache();
+      const planName = res.data.plan.name;
+      toast.success(`You're now on the ${planName} plan.`);
+      const next = nextAfter();
+      if (next) router.push(next);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not activate plan.");
+      const msg = error instanceof Error ? error.message : "Could not activate plan.";
+      setNotice(msg);
+      toast.error(msg);
     } finally {
       setBusy(null);
     }
   };
 
-  // Real payment — redirect to Stripe hosted checkout.
-  const buyWithStripe = async (key: string) => {
-    setBusy(`stripe-${key}`);
-    setNotice("");
-    try {
-      const res = await api.post<{ url: string }>("/billing/checkout", { plan_key: key });
-      window.location.href = res.data.url;
-    } catch (error) {
-      setNotice(
-        error instanceof Error
-          ? `${error.message} (tip: use "Activate (test)" for the $0 demo).`
-          : "Could not start checkout.",
-      );
-      setBusy(null);
-    }
+  // Go to the in-app checkout page (handles real Stripe when configured, demo
+  // card-entry otherwise), preserving where to return after purchase.
+  const buyPackage = (key: string) => {
+    const next = nextAfter();
+    const q = new URLSearchParams({ plan: key });
+    if (next) q.set("next", next);
+    router.push(`/settings/plan/checkout?${q.toString()}`);
   };
 
   const usagePct = me ? Math.min((me.usage.used / Math.max(me.usage.quota, 1)) * 100, 100) : 0;
@@ -104,8 +110,8 @@ export default function PlanPage() {
   return (
     <FeaturePageFrame
       eyebrow="Plan & Billing"
-      title="Choose your package"
-      description="Free lets you register one site and run a quick AI-visibility test. Buy a package to unlock the full report and tools — each tier adds more projects, deeper crawls, more AI scans, more engines, and more features."
+      title="Choose your plan"
+      description="Free lets you add one site and run a quick AI-visibility test. Upgrade to unlock the full report and all the tools."
     >
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading your plan…</p>
@@ -244,16 +250,11 @@ export default function PlanPage() {
                       <>
                         <button
                           type="button"
-                          disabled={busy === `stripe-${plan.key}`}
-                          onClick={() => void buyWithStripe(plan.key)}
-                          className="btn-brand inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-60"
+                          onClick={() => buyPackage(plan.key)}
+                          className="btn-brand inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5"
                         >
-                          {busy === `stripe-${plan.key}` ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <CreditCard className="h-4 w-4" />
-                          )}
-                          Subscribe with Stripe
+                          <CreditCard className="h-4 w-4" />
+                          Subscribe
                         </button>
                         {/* TEST ONLY — bypasses payment. Remove before production. */}
                         <button

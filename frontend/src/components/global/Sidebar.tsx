@@ -8,14 +8,15 @@ import {
   CreditCard,
   FolderKanban,
   Gauge,
-  KeyRound,
   LineChart,
   LogOut,
   PenTool,
   RefreshCcw,
   Rocket,
   ScanSearch,
+  Settings,
   Sparkles,
+  Tags,
   Target,
   Wrench,
 } from "lucide-react";
@@ -36,17 +37,18 @@ const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: BarChart3 },
   { title: "Projects", href: "/projects", icon: FolderKanban },
   { title: "Full Analysis", href: "/projects/:projectId/analysis", icon: Rocket, requiresProject: true },
+  { title: "Keyword Analysis", href: "/projects/:projectId/keywords", icon: Tags, requiresProject: true },
   { title: "Prompt Optimization", href: "/projects/:projectId/prompts", icon: Sparkles, requiresProject: true },
   { title: "Content Generation", href: "/projects/:projectId/content-gen", icon: PenTool, requiresProject: true },
-  { title: "AI Visibility", href: "/projects/:projectId/visibility", icon: Gauge, requiresProject: true },
-  { title: "Competitors", href: "/projects/:projectId/competitors", icon: Target, requiresProject: true },
-  { title: "Backlinks", href: "/projects/:projectId/backlinks", icon: LineChart, requiresProject: true },
-  { title: "Content Refresh", href: "/projects/:projectId/refresh", icon: RefreshCcw, requiresProject: true },
   { title: "SEO Fixes", href: "/projects/:projectId/fixes", icon: Wrench, requiresProject: true },
+  { title: "Backlinks", href: "/projects/:projectId/backlinks", icon: LineChart, requiresProject: true },
   { title: "LSI Keywords", href: "/projects/:projectId/lsi-keywords", icon: ScanSearch, requiresProject: true },
   { title: "Analytics", href: "/projects/:projectId", icon: BarChart3, requiresProject: true },
+  { title: "AI Visibility", href: "/projects/:projectId/visibility", icon: Gauge, requiresProject: true },
+  { title: "Content Refresh", href: "/projects/:projectId/refresh", icon: RefreshCcw, requiresProject: true },
+  { title: "Competitors", href: "/projects/:projectId/competitors", icon: Target, requiresProject: true },
   { title: "Plan & Billing", href: "/settings/plan", icon: CreditCard },
-  { title: "RBAC Settings", href: "/settings/rbac", icon: KeyRound },
+  { title: "Settings", href: "/settings/account", icon: Settings },
 ];
 
 function resolveHref(href: string, activeProjectId: string | null) {
@@ -71,8 +73,8 @@ function isItemActive(
     return pathname === "/projects" || pathname === "/projects/new";
   }
 
-  if (item.href === "/settings/rbac") {
-    return pathname.startsWith("/settings/rbac");
+  if (item.href === "/settings/account") {
+    return pathname.startsWith("/settings/account");
   }
 
   if (item.href === "/projects/:projectId" && activeProjectId) {
@@ -136,7 +138,7 @@ export default function Sidebar() {
           if (item.requiresProject && !projectSectionRendered) {
             projectSectionRendered = true;
             label = <SectionLabel key="lbl-tools">Project Tools</SectionLabel>;
-          } else if (item.href === "/settings/rbac" && !settingsSectionRendered) {
+          } else if (item.href === "/settings/plan" && !settingsSectionRendered) {
             settingsSectionRendered = true;
             label = <SectionLabel key="lbl-settings">Settings</SectionLabel>;
           }

@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 
+import api from "@/lib/api";
 import { LogoGlyph } from "@/components/global/Logo";
 import { useAuthStore } from "@/store/authStore";
+import { toast } from "@/store/toastStore";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,6 +20,21 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  const needsVerification = errorMessage.toLowerCase().includes("verify your email");
+
+  const resendVerification = async () => {
+    setResending(true);
+    try {
+      await api.post("/auth/resend-verification", { email: email.trim() });
+      toast.success("Verification email sent — check your inbox.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Couldn't resend the email.");
+    } finally {
+      setResending(false);
+    }
+  };
 
   useEffect(() => {
     if (hasHydrated && isAuthenticated) {
@@ -48,6 +65,17 @@ export default function LoginPage() {
       setIsSubmitting(false);
     }
   };
+
+  // Already signed in — show a redirect spinner instead of the form (avoids the
+  // "blank login flashes then jumps to dashboard" effect on slow loads).
+  if (hasHydrated && isAuthenticated) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> You&apos;re signed in — taking you to your
+        dashboard…
+      </main>
+    );
+  }
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
@@ -128,9 +156,17 @@ export default function LoginPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground" htmlFor="password">
-                  Password
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-foreground" htmlFor="password">
+                    Password
+                  </label>
+                  <Link
+                    href="/forgot-password"
+                    className="text-xs font-semibold text-primary underline-offset-4 hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
                 <input
                   id="password"
                   type="password"
@@ -146,6 +182,17 @@ export default function LoginPage() {
               {errorMessage ? (
                 <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                   {errorMessage}
+                  {needsVerification ? (
+                    <button
+                      type="button"
+                      onClick={resendVerification}
+                      disabled={resending}
+                      className="mt-2 inline-flex items-center gap-1.5 font-semibold text-destructive underline underline-offset-4 disabled:opacity-60"
+                    >
+                      {resending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      {resending ? "Sending…" : "Resend verification email"}
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -154,6 +201,7 @@ export default function LoginPage() {
                 disabled={isDisabled}
                 className="btn-brand inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               >
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {isSubmitting ? "Signing in..." : "Sign in"}
                 {!isSubmitting ? <ArrowRight className="h-4 w-4" /> : null}
               </button>

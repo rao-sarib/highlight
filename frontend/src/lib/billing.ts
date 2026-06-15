@@ -23,6 +23,8 @@ export interface BillingMe {
   projects_used: number;
   projects_limit: number;
   stripe_enabled: boolean;
+  role: string;
+  role_features: string[];
 }
 
 // Module-level cache so navigating between feature pages doesn't refetch.

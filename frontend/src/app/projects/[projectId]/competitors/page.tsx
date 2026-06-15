@@ -7,7 +7,9 @@ import { ExternalLink, Globe2, Loader2, RefreshCcw, Scale, Target, Trophy } from
 import { AutoModePanel } from "@/components/global/auto-mode-panel";
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
+import { toLocalDateTime } from "@/lib/format";
 import { useProjectContext } from "@/lib/useProjectContext";
+import { toast } from "@/store/toastStore";
 
 interface SerpEntry {
   position: number;
@@ -68,8 +70,11 @@ export default function ProjectCompetitorPage() {
         force_refresh: forceRefresh,
       });
       setResult(response.data);
+      toast.success(`Compared against ${response.data.competitor_title || response.data.competitor_url}.`);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to benchmark competitor.");
+      const msg = error instanceof Error ? error.message : "Failed to benchmark competitor.";
+      setErrorMessage(msg);
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -83,9 +88,9 @@ export default function ProjectCompetitorPage() {
   return (
     <FeaturePageFrame
       feature="competitors"
-      eyebrow="Competitor Benchmarking"
-      title="Compare your project against a live competitor"
-      description="Submit a competitor URL and target keyword to calculate relative density, surface semantic opportunities, and see real Google SERP rankings (requires Serper API key)."
+      eyebrow="Competitors"
+      title="Compare against a competitor"
+      description="Enter a competitor URL or name and a keyword to compare keyword coverage, find gap terms, and see Google rankings."
     >
       <section className="space-y-4 rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
         <AutoModePanel
@@ -98,7 +103,7 @@ export default function ProjectCompetitorPage() {
           <input
             value={competitorUrl}
             onChange={(event) => setCompetitorUrl(event.target.value)}
-            placeholder="Leave blank to auto-detect from Google SERP"
+            placeholder="Competitor URL or name (blank = auto-detect)"
             className="h-12 rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
           />
           <input
@@ -150,7 +155,7 @@ export default function ProjectCompetitorPage() {
           <div className="flex items-center justify-between gap-3 px-1">
             <p className="text-xs text-muted-foreground">
               {result.generated_at
-                ? `Last compared ${new Date(result.generated_at).toLocaleString()}`
+                ? `Last compared ${toLocalDateTime(result.generated_at)}`
                 : "Latest comparison"}
             </p>
             <button

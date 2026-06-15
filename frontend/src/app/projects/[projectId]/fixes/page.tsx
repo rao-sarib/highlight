@@ -98,9 +98,9 @@ export default function ProjectFixesPage() {
   return (
     <FeaturePageFrame
       feature="fixes"
-      eyebrow="SEO Fixes · Whole-site audit"
-      title="Crawl & fix on-page SEO"
-      description="Crawls your whole website (up to your plan's page limit), audits every page for on-page SEO issues, scores site health, and detects your niche. Results are saved — re-open anytime without re-crawling."
+      eyebrow="SEO Fixes"
+      title="Audit & fix your site"
+      description="Crawls your whole site, finds on-page SEO issues, scores your site health, and detects your niche. Results are saved, so you can reopen anytime."
     >
       <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

@@ -90,24 +90,64 @@ def _get_owned_project_or_404(db: Session, project_id: uuid.UUID, user_id: uuid.
     return project
 
 
-async def _auto_detect_competitor(keyword: str, project_url: str) -> str | None:
-    """Pick the top-ranking page for the keyword that isn't the project's own site."""
-    result = await serper_service.search(keyword, num=10)
-    if result.error or not result.organic:
+def _looks_like_url(text: str) -> str | None:
+    """If text looks like a URL/domain, return a normalized https URL; else None."""
+    t = text.strip()
+    if not t or " " in t:
         return None
+    if t.startswith("http://") or t.startswith("https://"):
+        return t
+    # bare domain like "deno.com" or "deno.com/runtime"
+    host = t.split("/")[0]
+    if "." in host and not host.endswith("."):
+        return f"https://{t}"
+    return None
+
+
+async def _search_competitor_urls(query: str, project_url: str, limit: int = 6) -> list[str]:
+    """Treat a competitor NAME as a search query and return candidate URLs."""
+    result = await serper_service.search(query, num=10)
+    if result.error or not result.organic:
+        return []
     project_host = urlparse(project_url).netloc.lower().removeprefix("www.")
+    out: list[str] = []
     for entry in result.organic:
         host = urlparse(entry.url).netloc.lower().removeprefix("www.")
-        if not host or not project_host:
+        if not host or (project_host and host == project_host):
             continue
-        if host == project_host or project_host in host or host in project_host:
+        if any(host == bad or host.endswith("." + bad) for bad in UNSCRAPEABLE_HOSTS):
+            continue
+        out.append(entry.url)
+        if len(out) >= limit:
+            break
+    return out
+
+
+async def _auto_detect_competitors(keyword: str, project_url: str, limit: int = 8) -> list[str]:
+    """Return top-ranking pages for the keyword that aren't the project's own site.
+
+    Returns several candidates (skipping bot-walled/social domains) so the caller
+    can fall through to the next one if a page can't be fetched.
+    """
+    result = await serper_service.search(keyword, num=10)
+    if result.error or not result.organic:
+        return []
+    project_host = urlparse(project_url).netloc.lower().removeprefix("www.")
+    out: list[str] = []
+    for entry in result.organic:
+        host = urlparse(entry.url).netloc.lower().removeprefix("www.")
+        if not host:
+            continue
+        if project_host and (host == project_host or project_host in host or host in project_host):
             continue
         # Skip bot-walled / social domains — they scrape to junk ("Please wait
         # for verification") and produce meaningless density + gap terms.
         if any(host == bad or host.endswith("." + bad) for bad in UNSCRAPEABLE_HOSTS):
             continue
-        return entry.url
-    return None
+        out.append(entry.url)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _keyword_density(text: str, keyword: str) -> float:
@@ -168,19 +208,28 @@ async def benchmark_competitor(
     # Auto-mode: keyword from niche when omitted (relevance-guarded if manual);
     # competitor auto-detected from the keyword's SERP when omitted.
     keyword = await resolve_keyword(project, body.keyword)
-    competitor_url = (body.competitor_url or "").strip()
-    if not competitor_url:
-        competitor_url = await _auto_detect_competitor(keyword, project.url) or ""
-        if not competitor_url:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    "Couldn't auto-detect a competitor for this keyword. Provide a "
-                    "competitor URL, or ensure SERPER_API_KEY is configured."
-                ),
-            )
+    manual = (body.competitor_url or "").strip()
+    if manual:
+        as_url = _looks_like_url(manual)
+        if as_url:
+            candidates = [as_url]
+        else:
+            # Treat the input as a competitor NAME -> search for it.
+            candidates = await _search_competitor_urls(manual, project.url)
+    else:
+        candidates = await _auto_detect_competitors(keyword, project.url)
+    if not candidates:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Couldn't find a competitor for that input. Try a competitor website URL, a "
+                "clearer name, or a different keyword."
+            ),
+        )
 
-    input_key = make_input_key(competitor_url, keyword)
+    # Cache key is based on the keyword (the actual competitor may vary by which
+    # candidate is fetchable), so repeat runs for the same keyword reuse results.
+    input_key = make_input_key(manual or "auto", keyword)
     if not body.force_refresh:
         cached = get_cached(db, body.project_id, FEATURE, input_key)
         if cached is not None:
@@ -188,18 +237,34 @@ async def benchmark_competitor(
                 **cached.payload, cached=True, generated_at=cached.updated_at
             )
 
-    # Project content from indexed embeddings
+    # Project content from indexed embeddings; if none yet (no audit run), fall
+    # back to scraping the project's own page so density isn't always 0%.
     project_chunks = db.exec(
         select(Embedding.text_chunk).where(Embedding.project_id == body.project_id)
     ).all()
     project_text = "\n".join(project_chunks)
+    if not project_text.strip():
+        own_page = await scraper_service.scrape_url(project.url)
+        if not own_page.error:
+            project_text = own_page.body_text or ""
 
-    # Scrape competitor page for content analysis
-    competitor_page = await scraper_service.scrape_url(competitor_url)
-    if competitor_page.error:
+    # Scrape the first candidate that returns usable content (resilient to a
+    # single competitor page that blocks scraping).
+    competitor_url = ""
+    competitor_page = None
+    for cand in candidates:
+        page = await scraper_service.scrape_url(cand)
+        if not page.error and (page.body_text or "").strip():
+            competitor_url = cand
+            competitor_page = page
+            break
+    if competitor_page is None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to scrape competitor URL: {competitor_page.error}",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Couldn't fetch a competitor page to compare for this keyword. "
+                "Try a different keyword or provide a competitor URL directly."
+            ),
         )
 
     project_density = _keyword_density(project_text, keyword)

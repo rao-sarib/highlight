@@ -19,28 +19,60 @@ import {
   Cpu,
   Eye,
   FileText,
+  Gauge,
   Layers,
+  Link2,
   MousePointerClick,
   Percent,
+  ScanSearch,
+  Search,
+  Sparkles,
+  Target,
   Timer,
+  TrendingUp,
   UserPlus,
   Users,
 } from "lucide-react";
 
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
+import { toLocalDate } from "@/lib/format";
 
 interface AnalyticsPoint {
   date: string;
   content_count: number;
 }
 
+interface ScorePoint {
+  date: string;
+  seo_health: number | null;
+  ai_visibility: number | null;
+}
+
 interface AnalyticsSummary {
   project_id: string;
+  niche: string | null;
+  ai_share_of_voice: number | null;
+  ai_rating: string | null;
+  cited_count: number;
+  in_sources_count: number;
+  prompt_count: number;
+  engines_checked: number;
+  scans_run: number;
+  seo_health_score: number | null;
+  pages_crawled: number;
+  last_audited_at: string | null;
   total_content_pieces: number;
-  indexed_chunks: number;
   content_by_type: Record<string, number>;
-  history: AnalyticsPoint[];
+  indexed_chunks: number;
+  keywords_tracked: number;
+  competitors_found: number;
+  backlink_opportunities: number;
+  google_keywords_ranking: number;
+  google_best_rank: number | null;
+  google_avg_rank: number | null;
+  content_history: AnalyticsPoint[];
+  score_history: ScorePoint[];
 }
 
 interface ProjectDetail {
@@ -215,8 +247,8 @@ export default function ProjectAnalyticsPage() {
   return (
     <FeaturePageFrame
       eyebrow="Analytics"
-      title="Project analytics"
-      description="Real metrics from your project's database, plus live Google Analytics 4 traffic data once you connect a property."
+      title="Analytics"
+      description="Key metrics for this project, plus Google Analytics 4 traffic once you connect a property."
     >
       {errorMessage ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -244,56 +276,131 @@ export default function ProjectAnalyticsPage() {
         </section>
       ) : (
         <>
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-[1.5rem] border border-border/70 bg-card p-5 shadow-sm">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <FileText className="h-5 w-5" />
-              </div>
-              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Total content pieces
-              </p>
-              <p className="mt-2 text-4xl font-semibold text-foreground">
-                {analytics.total_content_pieces}
-              </p>
-            </div>
+          {(() => {
+            const a = analytics;
+            const cards: { label: string; value: string; icon: typeof Eye; tone?: string }[] = [
+              {
+                label: "AI Share of Voice",
+                value: a.ai_share_of_voice != null ? `${a.ai_share_of_voice}%` : "—",
+                icon: Eye,
+                tone: "primary",
+              },
+              {
+                label: "SEO Health",
+                value: a.seo_health_score != null ? `${Math.round(a.seo_health_score)}/100` : "—",
+                icon: Gauge,
+                tone: "accent",
+              },
+              {
+                label: "Prompts cited",
+                value: a.prompt_count ? `${a.cited_count}/${a.prompt_count}` : "0",
+                icon: Sparkles,
+                tone: "success",
+              },
+              { label: "Engines checked", value: `${a.engines_checked}`, icon: Cpu },
+              { label: "AI scans run", value: `${a.scans_run}`, icon: ScanSearch },
+              { label: "In AI sources", value: `${a.in_sources_count}`, icon: Percent },
+              { label: "Pages crawled", value: `${a.pages_crawled}`, icon: FileText },
+              { label: "Content pieces", value: `${a.total_content_pieces}`, icon: BookOpen },
+              { label: "Indexed chunks", value: `${a.indexed_chunks}`, icon: Layers },
+              { label: "Keywords tracked", value: `${a.keywords_tracked}`, icon: Search },
+              { label: "Competitors found", value: `${a.competitors_found}`, icon: Target },
+              { label: "Backlink prospects", value: `${a.backlink_opportunities}`, icon: Link2 },
+              {
+                label: "Google rankings",
+                value: `${a.google_keywords_ranking}`,
+                icon: Search,
+                tone: "accent",
+              },
+              {
+                label: "Best Google rank",
+                value: a.google_best_rank != null ? `#${a.google_best_rank}` : "—",
+                icon: TrendingUp,
+                tone: "success",
+              },
+              {
+                label: "Avg Google rank",
+                value: a.google_avg_rank != null ? `#${a.google_avg_rank}` : "—",
+                icon: Gauge,
+              },
+            ];
+            return (
+              <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {cards.map(({ label, value, icon: Icon, tone }) => (
+                  <div key={label} className="rounded-[1.5rem] border border-border/70 bg-card p-5 shadow-sm">
+                    <div
+                      className={
+                        "flex h-11 w-11 items-center justify-center rounded-2xl " +
+                        (tone === "accent"
+                          ? "bg-accent/10 text-accent"
+                          : tone === "success"
+                            ? "bg-success/10 text-success"
+                            : "bg-primary/10 text-primary")
+                      }
+                    >
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <p className="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      {label}
+                    </p>
+                    <p className="mt-2 text-3xl font-semibold text-foreground">{value}</p>
+                  </div>
+                ))}
+              </section>
+            );
+          })()}
 
-            <div className="rounded-[1.5rem] border border-border/70 bg-card p-5 shadow-sm">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <Layers className="h-5 w-5" />
+          {/* Score progress over time */}
+          {analytics.score_history.length > 0 ? (
+            <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Score progress over time</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Your AI Share of Voice and SEO Health from each analysis — track whether you&apos;re
+                  improving. Real recorded history.
+                </p>
               </div>
-              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Indexed chunks
-              </p>
-              <p className="mt-2 text-4xl font-semibold text-foreground">
-                {analytics.indexed_chunks}
-              </p>
-            </div>
-
-            <div className="rounded-[1.5rem] border border-border/70 bg-card p-5 shadow-sm">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <BookOpen className="h-5 w-5" />
+              <div className="mt-8 h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={analytics.score_history}>
+                    <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="4 4" />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                      tickFormatter={(v: string) => toLocalDate(v)}
+                    />
+                    <YAxis domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "16px",
+                      }}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="ai_visibility"
+                      name="AI Share of Voice"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={2}
+                      connectNulls
+                      dot={{ r: 3 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="seo_health"
+                      name="SEO Health"
+                      stroke="hsl(var(--accent))"
+                      strokeWidth={2}
+                      connectNulls
+                      dot={{ r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
-              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Blog posts
-              </p>
-              <p className="mt-2 text-4xl font-semibold text-foreground">
-                {analytics.content_by_type.blog ?? 0}
-              </p>
-            </div>
-
-            <div className="rounded-[1.5rem] border border-border/70 bg-card p-5 shadow-sm">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <Cpu className="h-5 w-5" />
-              </div>
-              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Meta + FAQ pieces
-              </p>
-              <p className="mt-2 text-4xl font-semibold text-foreground">
-                {(analytics.content_by_type.meta ?? 0) +
-                  (analytics.content_by_type.faq ?? 0)}
-              </p>
-            </div>
-          </section>
+            </section>
+          ) : null}
 
           <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
             <div>
@@ -307,7 +414,7 @@ export default function ProjectAnalyticsPage() {
 
             <div className="mt-8 h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={analytics.history}>
+                <BarChart data={analytics.content_history}>
                   <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="4 4" />
                   <XAxis
                     dataKey="date"

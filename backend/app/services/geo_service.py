@@ -50,6 +50,9 @@ GEMINI_API_URL = (
     "gemini-2.0-flash:generateContent"
 )
 SERPER_API_URL = "https://google.serper.dev/search"
+# SerpApi returns Google's AI Overview (Serper does not). Used only for the
+# Google AI Overview engine.
+SERPAPI_API_URL = "https://serpapi.com/search.json"
 ENGINE_TIMEOUT = 45
 MAX_ANSWER_TOKENS = 300
 MAX_CONCURRENCY = 5
@@ -153,6 +156,20 @@ def brand_terms_from(project_name: str, project_url: str) -> list[str]:
     return unique[:6]
 
 
+def _serpapi_aio_text(aio: dict) -> str:
+    """Flatten SerpApi's ai_overview text_blocks (paragraphs + lists) into text."""
+    parts: list[str] = []
+    for block in aio.get("text_blocks") or []:
+        snippet = block.get("snippet")
+        if snippet:
+            parts.append(str(snippet))
+        for item in block.get("list") or []:
+            value = item.get("snippet") or item.get("title")
+            if value:
+                parts.append(str(value))
+    return " ".join(parts).strip()
+
+
 def _brand_in_text(answer: str, brand_terms: list[str]) -> bool:
     return any(
         re.search(rf"\b{re.escape(term)}\b", answer, flags=re.IGNORECASE) for term in brand_terms
@@ -167,10 +184,13 @@ class GeoService:
     openai_key: str = field(default_factory=lambda: settings.OPENAI_API_KEY.strip())
     gemini_key: str = field(default_factory=lambda: settings.GEMINI_API_KEY.strip())
     serper_key: str = field(default_factory=lambda: settings.SERPER_API_KEY.strip())
+    serpapi_key: str = field(default_factory=lambda: settings.SERPAPI_API_KEY.strip())
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.perplexity_key or self.openai_key or self.gemini_key or self.serper_key)
+        return bool(
+            self.perplexity_key or self.openai_key or self.gemini_key or self.serpapi_key
+        )
 
     def available_engines(self) -> list[str]:
         engines: list[str] = []
@@ -180,7 +200,9 @@ class GeoService:
             engines.append(ENGINE_OPENAI)
         if self.gemini_key:
             engines.append(ENGINE_GEMINI)
-        if self.serper_key:
+        # Google AI Overview needs SerpApi (Serper doesn't return overviews), so
+        # only offer this engine when a SerpApi key is configured.
+        if self.serpapi_key:
             engines.append(ENGINE_GOOGLE_AIO)
         return engines
 
@@ -257,32 +279,48 @@ class GeoService:
         return answer, citations
 
     async def _q_google_aio(self, client: httpx.AsyncClient, prompt: str):
-        """Check Google's AI Overview (via Serper) for a prompt.
+        """Check Google's AI Overview (via SerpApi) for a prompt.
 
         Returns (answer_text, citation_urls) when Google shows an AI Overview,
         or NO_OVERVIEW when none is shown for that query (a real outcome — you
         cannot be cited in an overview that does not exist).
         """
-        resp = await client.post(
-            SERPER_API_URL,
-            headers={"X-API-KEY": self.serper_key, "Content-Type": "application/json"},
-            json={"q": prompt.strip()},
+        resp = await client.get(
+            SERPAPI_API_URL,
+            params={
+                "engine": "google",
+                "q": prompt.strip(),
+                "gl": "us",
+                "hl": "en",
+                "api_key": self.serpapi_key,
+            },
         )
         resp.raise_for_status()
-        data = resp.json()
-        aio = data.get("aiOverview") or data.get("ai_overview")
+        aio = resp.json().get("ai_overview")
         if not aio:
             return NO_OVERVIEW
-        # Text can arrive as a flat snippet or as structured text blocks.
-        text = str(aio.get("snippet") or aio.get("text") or "")
-        if not text:
-            blocks = aio.get("textBlocks") or aio.get("text_blocks") or []
-            text = " ".join(str(b.get("snippet") or b.get("text") or "") for b in blocks).strip()
+
+        # Some overviews arrive as just a page_token that must be fetched separately.
+        if not aio.get("text_blocks") and aio.get("page_token"):
+            follow = await client.get(
+                SERPAPI_API_URL,
+                params={
+                    "engine": "google_ai_overview",
+                    "page_token": aio["page_token"],
+                    "api_key": self.serpapi_key,
+                },
+            )
+            follow.raise_for_status()
+            aio = follow.json().get("ai_overview") or aio
+
+        text = _serpapi_aio_text(aio)
         citations: list[str] = []
-        for ref in (aio.get("references") or aio.get("sources") or []):
-            url = str(ref.get("link") or ref.get("url") or "").strip()
+        for ref in aio.get("references") or []:
+            url = str(ref.get("link") or "").strip()
             if url and url not in citations:
                 citations.append(url)
+        if not text and not citations:
+            return NO_OVERVIEW
         return text, citations
 
     async def _query(self, engine: str, client: httpx.AsyncClient, prompt: str):

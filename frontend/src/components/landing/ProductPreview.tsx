@@ -1,161 +1,98 @@
-import { ArrowUpRight, Gauge, Search, Sparkles, TrendingUp } from "lucide-react";
-
-import { Logo } from "@/components/global/Logo";
-
-const bars = [38, 54, 47, 68, 60, 82, 74, 92];
-
-const navDots = [
-  { active: true },
-  { active: false },
-  { active: false },
-  { active: false },
-  { active: false },
-];
+import { LogoGlyph } from "@/components/global/Logo";
 
 /**
- * A stylized, animated "product screenshot" of the Highlight dashboard.
- * Pure markup + CSS animations (no client JS) so it renders instantly and
- * adapts to light/dark via design tokens.
+ * Premium hero graphic — a "citation constellation": the brand orb at the center
+ * with the AI engines as labelled nodes orbiting it, connected by drawn lines.
+ * Pure markup + CSS (no mock UI, no fabricated data).
+ *
+ * Note: positioning translate (-translate-1/2) and the float animation must live
+ * on SEPARATE elements — an animation's `transform` overrides Tailwind's
+ * translate, which would knock centred elements off-centre.
  */
+const engines = [
+  { name: "ChatGPT", x: 16, y: 16, delay: "0ms" },
+  { name: "Perplexity", x: 84, y: 22, delay: "180ms" },
+  { name: "Gemini", x: 82, y: 80, delay: "360ms" },
+  { name: "Google AI Overview", x: 16, y: 82, delay: "540ms" },
+];
+
 export default function ProductPreview() {
   return (
-    <div className="group perspective-1200">
-      <div className="tilt-hero preserve-3d">
-        <div className="relative overflow-hidden rounded-[1.6rem] border border-border/60 bg-card/90 shadow-glow-lg backdrop-blur-xl">
-          {/* Window chrome */}
-          <div className="flex items-center gap-2 border-b border-border/60 bg-muted/40 px-4 py-3">
-            <span className="h-3 w-3 rounded-full bg-destructive/70" />
-            <span className="h-3 w-3 rounded-full bg-warning/80" />
-            <span className="h-3 w-3 rounded-full bg-success/80" />
-            <div className="ml-3 flex h-7 flex-1 items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 text-[0.7rem] text-muted-foreground">
-              <Search className="h-3 w-3" />
-              app.highlight.ai/dashboard
-            </div>
-            <div className="flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide text-success">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping-ring rounded-full bg-success/70" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
+    <div className="relative mx-auto aspect-square w-full max-w-[30rem]">
+      {/* Ambient glow */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-12 animate-glow-pulse rounded-full bg-brand-gradient opacity-25 blur-3xl"
+      />
+
+      {/* Connector lines from the orb to each engine node */}
+      <svg
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+        className="absolute inset-0 h-full w-full"
+      >
+        <defs>
+          <linearGradient id="hlLink" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="hsl(var(--primary))" />
+            <stop offset="100%" stopColor="hsl(var(--accent))" />
+          </linearGradient>
+        </defs>
+        {engines.map((e) => (
+          <line
+            key={e.name}
+            x1="50"
+            y1="50"
+            x2={e.x}
+            y2={e.y}
+            stroke="url(#hlLink)"
+            strokeWidth="0.5"
+            strokeLinecap="round"
+            opacity="0.4"
+            pathLength={1}
+            strokeDasharray={1}
+            className="animate-draw-line"
+          />
+        ))}
+      </svg>
+
+      {/* Static orbital rings */}
+      <div aria-hidden="true" className="absolute inset-2 rounded-full border border-primary/10" />
+      <div aria-hidden="true" className="absolute inset-[24%] rounded-full border border-border/50" />
+
+      {/* Orbiting accent dots */}
+      <div aria-hidden="true" className="absolute inset-0 animate-spin-slow">
+        <span className="absolute left-1/2 top-[3%] h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-accent shadow-glow" />
+        <span className="absolute bottom-[8%] right-[18%] h-2 w-2 rounded-full bg-primary shadow-glow" />
+      </div>
+
+      {/* Engine nodes (name integrated into the graphic) */}
+      {engines.map((e) => (
+        <div
+          key={e.name}
+          style={{ left: `${e.x}%`, top: `${e.y}%` }}
+          className="absolute z-20 -translate-x-1/2 -translate-y-1/2"
+        >
+          <div style={{ animationDelay: e.delay }} className="animate-float">
+            <span className="relative flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-card/95 shadow-soft backdrop-blur">
+              <span className="h-2.5 w-2.5 rounded-full bg-brand-gradient" />
+              <span className="absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap text-[0.72rem] font-semibold text-foreground">
+                {e.name}
               </span>
-              Live
-            </div>
+            </span>
           </div>
+        </div>
+      ))}
 
-          <div className="flex">
-            {/* Mini sidebar */}
-            <div className="hidden w-14 shrink-0 flex-col items-center gap-4 border-r border-border/60 bg-muted/20 py-5 sm:flex">
-              <Logo className="h-8 w-8 shadow-glow" />
-              <div className="mt-1 flex flex-col items-center gap-3">
-                {navDots.map((d, i) => (
-                  <span
-                    key={i}
-                    className={
-                      d.active
-                        ? "h-6 w-6 rounded-lg bg-primary/15 ring-1 ring-inset ring-primary/30"
-                        : "h-6 w-6 rounded-lg bg-foreground/5"
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Main content */}
-            <div className="min-w-0 flex-1 space-y-4 p-5">
-              {/* Header row */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="h-2.5 w-28 rounded-full bg-foreground/15" />
-                  <div className="mt-2 h-2 w-20 rounded-full bg-foreground/10" />
-                </div>
-                <div className="flex items-center gap-1.5 rounded-lg bg-brand-gradient px-3 py-1.5 text-[0.65rem] font-semibold text-white shadow-glow">
-                  <Sparkles className="h-3 w-3" />
-                  Run audit
-                </div>
-              </div>
-
-              {/* KPI cards */}
-              <div className="grid grid-cols-3 gap-2.5">
-                {[
-                  { icon: Gauge, label: "AI Visibility", val: "92", tone: "primary" },
-                  { icon: TrendingUp, label: "SEO Score", val: "87", tone: "accent" },
-                  { icon: Search, label: "Keywords", val: "1.2k", tone: "success" },
-                ].map(({ icon: Icon, label, val, tone }) => (
-                  <div
-                    key={label}
-                    className="rounded-xl border border-border/60 bg-background/60 p-2.5"
-                  >
-                    <div
-                      className={
-                        "flex h-6 w-6 items-center justify-center rounded-lg " +
-                        (tone === "primary"
-                          ? "bg-primary/15 text-primary"
-                          : tone === "accent"
-                            ? "bg-accent/15 text-accent"
-                            : "bg-success/15 text-success")
-                      }
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                    </div>
-                    <p className="mt-2 font-display text-lg font-semibold leading-none text-foreground">
-                      {val}
-                    </p>
-                    <p className="mt-1 flex items-center gap-0.5 text-[0.6rem] text-muted-foreground">
-                      {label}
-                      <ArrowUpRight className="h-2.5 w-2.5 text-success" />
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Chart card */}
-              <div className="rounded-xl border border-border/60 bg-background/60 p-3.5">
-                <div className="flex items-center justify-between">
-                  <div className="h-2 w-24 rounded-full bg-foreground/15" />
-                  <div className="flex gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-primary" />
-                    <span className="h-2 w-2 rounded-full bg-accent" />
-                  </div>
-                </div>
-
-                {/* Animated bars + sparkline */}
-                <div className="relative mt-3 h-24">
-                  {/* Sparkline overlay */}
-                  <svg
-                    viewBox="0 0 100 40"
-                    preserveAspectRatio="none"
-                    className="absolute inset-x-0 top-0 h-12 w-full"
-                  >
-                    <defs>
-                      <linearGradient id="spark" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stopColor="hsl(var(--primary))" />
-                        <stop offset="100%" stopColor="hsl(var(--accent))" />
-                      </linearGradient>
-                    </defs>
-                    <path
-                      d="M0,30 C12,28 18,10 30,12 C42,14 50,26 62,22 C74,18 82,4 100,6"
-                      fill="none"
-                      stroke="url(#spark)"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      pathLength={1}
-                      strokeDasharray={1}
-                      className="animate-draw-line"
-                    />
-                  </svg>
-
-                  {/* Bars */}
-                  <div className="absolute inset-x-0 bottom-0 flex h-16 items-end justify-between gap-1.5">
-                    {bars.map((h, i) => (
-                      <div
-                        key={i}
-                        style={{ height: `${h}%`, animationDelay: `${i * 90}ms` }}
-                        className="w-full origin-bottom animate-rise-bar rounded-t-md bg-gradient-to-t from-primary/30 to-primary/80"
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* Center brand orb — positioning on the outer div, float on the inner */}
+      <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+        <div className="relative flex h-40 w-40 animate-float items-center justify-center rounded-full bg-brand-gradient shadow-glow-lg sm:h-48 sm:w-48">
+          <div
+            aria-hidden="true"
+            className="absolute left-7 top-6 h-16 w-16 rounded-full bg-white/30 blur-2xl"
+          />
+          <div aria-hidden="true" className="absolute inset-3 rounded-full ring-1 ring-inset ring-white/20" />
+          <LogoGlyph className="relative h-20 w-20 text-white drop-shadow-[0_8px_28px_rgba(11,18,32,0.35)]" />
         </div>
       </div>
     </div>

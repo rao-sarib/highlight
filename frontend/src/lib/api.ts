@@ -94,6 +94,17 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401) {
       clearStoredToken();
+      // Session is invalid/expired — bounce to login instead of leaving the
+      // user on a dashboard whose features all fail with "could not validate".
+      if (typeof window !== "undefined") {
+        const path = window.location.pathname;
+        const onAuthPage = path.startsWith("/login") || path.startsWith("/signup");
+        const onPublic = path === "/" || path.startsWith("/adminpanel");
+        if (!onAuthPage && !onPublic) {
+          window.localStorage.removeItem("highlight-auth-store");
+          window.location.href = "/login?expired=1";
+        }
+      }
     }
 
     if (!error.response) {

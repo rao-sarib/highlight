@@ -139,6 +139,10 @@ const config: Config = {
           "0%": { transform: "scale(0.9)", opacity: "0.7" },
           "80%, 100%": { transform: "scale(1.8)", opacity: "0" },
         },
+        "highlight-wipe": {
+          "0%": { transform: "scaleX(0)" },
+          "100%": { transform: "scaleX(1)" },
+        },
       },
       animation: {
         "fade-up": "fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both",
@@ -156,6 +160,7 @@ const config: Config = {
         "ping-ring": "ping-ring 2.4s cubic-bezier(0,0,0.2,1) infinite",
         "rise-bar": "rise-bar 1.1s cubic-bezier(0.22, 1, 0.36, 1) both",
         "draw-line": "draw-line 2.2s ease forwards",
+        "highlight-wipe": "highlight-wipe 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.6s both",
       },
     },
   },

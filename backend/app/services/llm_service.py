@@ -147,6 +147,76 @@ class LLMService:
             raise LLMServiceError("OpenAI did not return usable GEO prompts.")
         return prompts[:count]
 
+    async def analyze_keywords(
+        self,
+        niche: str,
+        audience: str | None = None,
+        count: int = 15,
+    ) -> list[dict[str, Any]]:
+        """Analyze a site's topic into target keywords with SEO attributes.
+
+        Returns a list of {keyword, intent, type, relevance, note}.
+        """
+        normalized = (niche or "").strip()
+        if not normalized:
+            raise ValueError("A niche/topic is required for keyword analysis.")
+        count = max(5, min(count, 25))
+        user_lines = [f"Site topic / niche: {normalized}"]
+        if audience and audience.strip():
+            user_lines.append(f"Target audience: {audience.strip()}")
+
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=0.5,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"You are an SEO keyword strategist. For the given site, return {count} "
+                        "high-value target keywords the site should rank for. For EACH keyword "
+                        "include: 'keyword' (2-5 words), 'intent' (one of: informational, "
+                        "commercial, transactional, navigational), 'type' (one of: primary, "
+                        "secondary, long_tail), 'relevance' (one of: high, medium, low), and "
+                        "'note' (a short reason, max 12 words). Mix head terms and long-tail. "
+                        'Return ONLY valid JSON: {"keywords":[{"keyword":"...","intent":"...",'
+                        '"type":"...","relevance":"...","note":"..."}]}.'
+                    ),
+                },
+                {"role": "user", "content": "\n".join(user_lines)},
+            ],
+        )
+        raw_content = (response.choices[0].message.content or "").strip()
+        payload = self._safe_json_object(raw_content)
+        allowed_intent = {"informational", "commercial", "transactional", "navigational"}
+        allowed_type = {"primary", "secondary", "long_tail"}
+        allowed_rel = {"high", "medium", "low"}
+        out: list[dict[str, Any]] = []
+        for item in payload.get("keywords", []):
+            if not isinstance(item, dict):
+                continue
+            kw = str(item.get("keyword", "")).strip()
+            if not kw:
+                continue
+            out.append(
+                {
+                    "keyword": kw,
+                    "intent": (str(item.get("intent", "")).strip().lower() or "informational")
+                    if str(item.get("intent", "")).strip().lower() in allowed_intent
+                    else "informational",
+                    "type": (str(item.get("type", "")).strip().lower())
+                    if str(item.get("type", "")).strip().lower() in allowed_type
+                    else "secondary",
+                    "relevance": (str(item.get("relevance", "")).strip().lower())
+                    if str(item.get("relevance", "")).strip().lower() in allowed_rel
+                    else "medium",
+                    "note": str(item.get("note", "")).strip()[:120],
+                }
+            )
+        if not out:
+            raise LLMServiceError("OpenAI did not return usable keywords.")
+        return out[:count]
+
     async def generate_action_plan(
         self,
         niche: str,

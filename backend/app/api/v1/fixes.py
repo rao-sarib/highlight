@@ -26,6 +26,7 @@ from app.db.session import get_db
 from app.models.page_audit import PageAudit
 from app.models.project import Project
 from app.models.user import User
+from app.services.score_service import record_score
 from app.services.site_audit_service import run_site_audit
 from app.temporal.workflows.audit_workflow import AuditWorkflow, AuditWorkflowInput
 
@@ -140,6 +141,7 @@ async def audit_site(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     db.refresh(project)
+    record_score(db, project.id, seo_health=project.seo_health_score)
     return _read_stored_audit(db, project)
 
 

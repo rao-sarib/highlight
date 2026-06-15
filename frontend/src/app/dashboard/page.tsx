@@ -49,11 +49,10 @@ export default function DashboardPage() {
               Workspace
             </span>
             <h1 className="mt-4 font-display text-4xl font-semibold tracking-tight text-foreground">
-              Your projects, <span className="text-gradient">at a glance</span>
+              Your <span className="text-gradient">projects</span>
             </h1>
             <p className="mt-3 max-w-xl text-base leading-7 text-muted-foreground">
-              Jump into any project to run audits, generate prompts and content, benchmark
-              competitors, and schedule automated fixes.
+              Open a project to run audits, generate content, check AI visibility, and more.
             </p>
           </div>
           <Link
@@ -86,7 +85,7 @@ export default function DashboardPage() {
           {projects.map((project, index) => (
             <Link
               key={project.id}
-              href={`/projects/${project.id}`}
+              href={`/projects/${project.id}/analysis`}
               onClick={() => setActiveProjectId(project.id)}
               style={{ animationDelay: `${index * 60}ms` }}
               className="group relative animate-fade-up overflow-hidden rounded-3xl border border-border/60 bg-card/80 p-6 shadow-soft backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-glow"
@@ -96,7 +95,7 @@ export default function DashboardPage() {
                 className="pointer-events-none absolute -right-12 -top-12 h-28 w-28 rounded-full bg-primary/10 opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100"
               />
               <div className="relative flex items-start justify-between gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/10">
+                <div className="icon-halo flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-accent/15 text-primary ring-1 ring-inset ring-primary/10 transition group-hover:scale-110">
                   <Globe2 className="h-5 w-5" />
                 </div>
                 <ArrowRight className="h-4 w-4 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary" />

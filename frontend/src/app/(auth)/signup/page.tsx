@@ -3,10 +3,26 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Loader2, MailCheck } from "lucide-react";
 
+import api from "@/lib/api";
 import { LogoGlyph } from "@/components/global/Logo";
-import { useAuthStore } from "@/store/authStore";
+import { useAuthStore, type SignupResult, type UserRole } from "@/store/authStore";
+import { toast } from "@/store/toastStore";
+
+const SIGNUP_ROLES: { value: UserRole; label: string; description: string }[] = [
+  { value: "seo_expert", label: "SEO Expert", description: "Full access to every tool." },
+  {
+    value: "content_writer",
+    label: "Content Writer",
+    description: "Content generation, prompts, LSI keywords, refresh.",
+  },
+  {
+    value: "analytics_manager",
+    label: "Analytics Manager",
+    description: "Analytics, AI visibility, competitors, and reports.",
+  },
+];
 
 export default function SignupPage() {
   const router = useRouter();
@@ -18,8 +34,11 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [role, setRole] = useState<UserRole>("seo_expert");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [result, setResult] = useState<SignupResult | null>(null);
+  const [resending, setResending] = useState(false);
 
   useEffect(() => {
     if (hasHydrated && isAuthenticated) {
@@ -49,12 +68,14 @@ export default function SignupPage() {
     setIsSubmitting(true);
 
     try {
-      await signup({
+      const res = await signup({
         email: email.trim(),
         password,
         full_name: fullName.trim(),
+        role,
       });
-      router.push("/dashboard");
+      setResult(res);
+      if (res.emailed) toast.success("Verification email sent — check your inbox.");
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Unable to create your account right now.",
@@ -63,6 +84,82 @@ export default function SignupPage() {
       setIsSubmitting(false);
     }
   };
+
+  const resend = async () => {
+    setResending(true);
+    try {
+      const r = await api.post<{ message: string; emailed: boolean; dev_url?: string | null }>(
+        "/auth/resend-verification",
+        { email: email.trim() },
+      );
+      setResult((prev) =>
+        prev ? { ...prev, emailed: r.data.emailed, dev_verify_url: r.data.dev_url ?? null } : prev,
+      );
+      toast.success(r.data.emailed ? "Verification email re-sent." : "Verification link refreshed.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Couldn't resend the email.");
+    } finally {
+      setResending(false);
+    }
+  };
+
+  if (hasHydrated && isAuthenticated) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> You&apos;re signed in — taking you to your
+        dashboard…
+      </main>
+    );
+  }
+
+  if (result) {
+    return (
+      <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground">
+        <div aria-hidden="true" className="absolute inset-0 bg-aurora" />
+        <div aria-hidden="true" className="absolute inset-0 bg-dots opacity-30" />
+        <div className="relative w-full max-w-md rounded-[2rem] border border-border/60 bg-card/80 p-8 text-center shadow-soft backdrop-blur-xl">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <MailCheck className="h-7 w-7" />
+          </div>
+          <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">Check your email</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{result.message}</p>
+          <p className="mt-1 text-sm font-semibold text-foreground">{email.trim()}</p>
+
+          {result.dev_verify_url ? (
+            <a
+              href={result.dev_verify_url}
+              className="btn-brand mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-white shadow-glow"
+            >
+              Verify now <ArrowRight className="h-4 w-4" />
+            </a>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={resend}
+            disabled={resending}
+            className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:border-primary/40 disabled:opacity-60"
+          >
+            {resending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {resending ? "Sending…" : "Resend email"}
+          </button>
+
+          <p className="mt-5 text-sm text-muted-foreground">
+            Already verified?{" "}
+            <Link className="font-semibold text-primary underline-offset-4 hover:underline" href="/login">
+              Sign in
+            </Link>
+          </p>
+          {result.dev_verify_url ? (
+            <p className="mt-4 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-left text-xs text-muted-foreground">
+              Email isn&apos;t configured yet, so the verification link is shown here for now. Once
+              SMTP is enabled in the admin panel, this link is emailed instead.
+            </p>
+          ) : null}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
@@ -153,6 +250,31 @@ export default function SignupPage() {
                     required
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Your role</label>
+                <div className="grid gap-2">
+                  {SIGNUP_ROLES.map((r) => (
+                    <button
+                      type="button"
+                      key={r.value}
+                      onClick={() => setRole(r.value)}
+                      className={`flex flex-col rounded-xl border px-4 py-3 text-left transition ${
+                        role === r.value
+                          ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                          : "border-border bg-background hover:border-primary/40"
+                      }`}
+                    >
+                      <span className="text-sm font-semibold text-foreground">{r.label}</span>
+                      <span className="text-xs text-muted-foreground">{r.description}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Your role sets which tools you can use. You&apos;ll still choose a package after
+                  signing up.
+                </p>
               </div>
 
               {errorMessage ? (

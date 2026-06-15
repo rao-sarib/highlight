@@ -6,6 +6,7 @@ import { FormEvent, useState } from "react";
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
 import { useProjectStore, type ProjectSummary } from "@/store/projectStore";
+import { toast } from "@/store/toastStore";
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -35,7 +36,8 @@ export default function NewProjectPage() {
 
       upsertProject(response.data);
       setActiveProjectId(response.data.id);
-      router.push(`/projects/${response.data.id}`);
+      toast.success("Project created — let's run your first analysis.");
+      router.push(`/projects/${response.data.id}/analysis`);
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Unable to create project.",
@@ -49,7 +51,7 @@ export default function NewProjectPage() {
     <FeaturePageFrame
       eyebrow="Projects"
       title="Create a new project"
-      description="Add the site you want to audit and optimize. This becomes the home for embeddings, generated content, audits, and feature workflows."
+      description="Add the site you want to audit and optimize."
     >
       <section className="max-w-2xl rounded-3xl border border-border/60 bg-card/80 p-6 shadow-soft backdrop-blur md:p-8">
         <form className="space-y-5" onSubmit={handleSubmit}>

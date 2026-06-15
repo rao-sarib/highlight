@@ -20,6 +20,8 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "rec
 import { AutoModePanel } from "@/components/global/auto-mode-panel";
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
+import { toLocalDateTime } from "@/lib/format";
+import { toast } from "@/store/toastStore";
 import { useProjectContext } from "@/lib/useProjectContext";
 
 interface ScanHistoryEntry {
@@ -181,13 +183,16 @@ export default function ProjectVisibilityPage() {
       const response = await api.post<VisibilityResponse>("/visibility/score", {
         project_id: params.projectId,
         keyword: keyword.trim() || null,
-        prompt_count: 4,
+        prompt_count: 5,
         force_refresh: forceRefresh,
       });
       setResult(response.data);
       void loadHistory();
+      toast.success(`Scan complete — AI Share of Voice ${response.data.share_of_voice}%.`);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to run the scan.");
+      const msg = error instanceof Error ? error.message : "Failed to run the scan.";
+      setErrorMessage(msg);
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -205,9 +210,9 @@ export default function ProjectVisibilityPage() {
   return (
     <FeaturePageFrame
       feature="visibility"
-      eyebrow="AI Visibility · GEO"
+      eyebrow="AI Visibility"
       title="AI Share of Voice"
-      description="Asks real buyer questions to multiple live AI answer engines (Perplexity, ChatGPT, Gemini, and Google AI Overview when configured) and measures how often your brand is cited — with a per-engine breakdown and the competitors cited instead."
+      description="Asks real buyer questions to ChatGPT, Perplexity, Gemini, and Google AI Overview, then measures how often you're cited — with a per-engine breakdown."
     >
       <section className="space-y-4 rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
         <AutoModePanel
@@ -350,7 +355,7 @@ export default function ProjectVisibilityPage() {
               </div>
 
               <p className="mt-4 text-xs text-muted-foreground">
-                Scanned {new Date(result.scanned_at).toLocaleString()}
+                Scanned {toLocalDateTime(result.scanned_at)}
                 {result.cached ? " · cached result" : " · live"}
               </p>
               {result.cached ? (

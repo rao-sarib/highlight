@@ -70,8 +70,8 @@ export default function ProjectLsiPage() {
     <FeaturePageFrame
       feature="lsi"
       eyebrow="LSI Keywords"
-      title="Find semantic support terms"
-      description="Use the project embeddings to surface related terms and semantic opportunities around a target keyword."
+      title="Find related keywords"
+      description="Enter a keyword to get related terms to include in your content."
     >
       <section className="space-y-4 rounded-[1.5rem] border border-border/70 bg-card p-6">
         <AutoModePanel

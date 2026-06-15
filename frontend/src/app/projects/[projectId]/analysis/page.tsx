@@ -18,8 +18,12 @@ import {
   TrendingUp,
 } from "lucide-react";
 
+import { jsPDF } from "jspdf";
+
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
+import { toLocalDateTime } from "@/lib/format";
+import { toast } from "@/store/toastStore";
 
 interface ActionItem {
   priority: number;
@@ -87,101 +91,358 @@ function humanIssue(issueType: string): string {
   return issueType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function buildReportMarkdown(report: AnalysisReport): string {
+interface ScorePointPdf {
+  date: string;
+  seo_health: number | null;
+  ai_visibility: number | null;
+}
+interface AnalyticsForPdf {
+  ai_share_of_voice: number | null;
+  seo_health_score: number | null;
+  total_content_pieces: number;
+  indexed_chunks: number;
+  keywords_tracked: number;
+  competitors_found: number;
+  backlink_opportunities: number;
+  scans_run: number;
+  google_keywords_ranking: number;
+  google_best_rank: number | null;
+  google_avg_rank: number | null;
+  content_by_type: Record<string, number>;
+  score_history: ScorePointPdf[];
+}
+
+type RGB = [number, number, number];
+
+function buildReportPdf(
+  report: AnalysisReport,
+  analytics: AnalyticsForPdf | null,
+  siteUrl = "",
+): jsPDF {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const M = 40;
+  const CW = W - M * 2;
+
+  const PRIMARY: RGB = [111, 85, 238];
+  const ACCENT: RGB = [27, 200, 232];
+  const SUCCESS: RGB = [22, 163, 74];
+  const WARN: RGB = [217, 119, 6];
+  const DANGER: RGB = [220, 38, 38];
+  const INK: RGB = [28, 28, 38];
+  const MUTE: RGB = [120, 120, 135];
+  const LINE: RGB = [225, 227, 236];
+  const SOFT: RGB = [244, 245, 250];
+  const WHITE: RGB = [255, 255, 255];
+
+  const fill = (c: RGB) => doc.setFillColor(c[0], c[1], c[2]);
+  const ink = (c: RGB) => doc.setTextColor(c[0], c[1], c[2]);
+  const stroke = (c: RGB) => doc.setDrawColor(c[0], c[1], c[2]);
+
+  let y = 0;
+  const ensure = (h: number) => {
+    if (y + h > H - 48) {
+      doc.addPage();
+      y = M;
+    }
+  };
+  const sectionHeader = (t: string) => {
+    y += 8;
+    ensure(26);
+    fill(PRIMARY);
+    doc.roundedRect(M, y - 9, 3, 13, 1, 1, "F");
+    ink(INK);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text(t, M + 10, y);
+    y += 16;
+  };
+  const para = (t: string, size = 10, color: RGB = MUTE, indent = 0) => {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(size);
+    ink(color);
+    for (const ln of doc.splitTextToSize(t, CW - indent)) {
+      ensure(size + 4);
+      doc.text(ln, M + indent, y);
+      y += size + 4;
+    }
+  };
+  const bullet = (t: string, color: RGB = MUTE) => {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    ink(color);
+    const lines = doc.splitTextToSize(t, CW - 14);
+    ensure(lines.length * 13 + 2);
+    fill(PRIMARY);
+    doc.circle(M + 3, y - 3, 1.6, "F");
+    for (const ln of lines) {
+      doc.text(ln, M + 12, y);
+      y += 13;
+    }
+  };
+  const gridCards = (items: { label: string; value: string | number }[]) => {
+    const perRow = 4;
+    const gap = 10;
+    const cw = (CW - gap * (perRow - 1)) / perRow;
+    const ch = 50;
+    for (let i = 0; i < items.length; i += perRow) {
+      const row = items.slice(i, i + perRow);
+      ensure(ch + 10);
+      row.forEach((it, j) => {
+        const x = M + j * (cw + gap);
+        fill(SOFT);
+        doc.roundedRect(x, y, cw, ch, 8, 8, "F");
+        ink(INK);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.text(String(it.value), x + 12, y + 26);
+        ink(MUTE);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.text(String(it.label).toUpperCase(), x + 12, y + 40);
+      });
+      y += ch + 10;
+    }
+  };
+  const lineChart = (series: ScorePointPdf[]) => {
+    const ch = 130;
+    ensure(ch + 10);
+    fill(SOFT);
+    doc.roundedRect(M, y, CW, ch, 8, 8, "F");
+    const plotX = M + 30;
+    const plotTop = y + 12;
+    const plotW = CW - 42;
+    const plotH = ch - 44;
+    stroke(LINE);
+    doc.setLineWidth(0.5);
+    ink(MUTE);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    [0, 25, 50, 75, 100].forEach((v) => {
+      const gy = plotTop + plotH - (v / 100) * plotH;
+      doc.line(plotX, gy, M + CW - 12, gy);
+      doc.text(String(v), plotX - 6, gy + 2, { align: "right" });
+    });
+    const n = series.length;
+    const xAt = (i: number) => (n <= 1 ? plotX + plotW / 2 : plotX + (i / (n - 1)) * plotW);
+    const yAt = (v: number) => plotTop + plotH - (Math.max(0, Math.min(100, v)) / 100) * plotH;
+    const drawSeries = (key: "ai_visibility" | "seo_health", color: RGB) => {
+      const pts: [number, number][] = [];
+      series.forEach((s, i) => {
+        const v = s[key];
+        if (typeof v === "number") pts.push([xAt(i), yAt(v)]);
+      });
+      stroke(color);
+      doc.setLineWidth(1.5);
+      for (let i = 1; i < pts.length; i++) doc.line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
+      fill(color);
+      pts.forEach((p) => doc.circle(p[0], p[1], 2, "F"));
+    };
+    drawSeries("ai_visibility", PRIMARY);
+    drawSeries("seo_health", ACCENT);
+    const legendY = y + ch - 8;
+    doc.setFontSize(8);
+    fill(PRIMARY);
+    doc.circle(plotX + 2, legendY - 3, 3, "F");
+    ink(MUTE);
+    doc.text("AI Share of Voice", plotX + 10, legendY);
+    fill(ACCENT);
+    doc.circle(plotX + 130, legendY - 3, 3, "F");
+    doc.text("SEO Health", plotX + 138, legendY);
+    y += ch + 12;
+  };
+
   const seo = report.seo_health_score ?? 0;
   const hasSov = report.share_of_voice !== null && report.share_of_voice !== undefined;
   const sov = report.share_of_voice ?? 0;
   const highlightScore = Math.round(hasSov ? 0.5 * seo + 0.5 * sov : seo);
-  const date = report.generated_at ? new Date(report.generated_at).toLocaleString() : "—";
-  const lines: string[] = [];
 
-  lines.push(`# AI Visibility & SEO Report`);
-  lines.push("");
-  lines.push(`**Niche:** ${report.niche || "—"}`);
-  lines.push(`**Generated:** ${date}`);
-  lines.push(`**Highlight Score (SEO + GEO):** ${highlightScore}/100`);
-  lines.push("");
+  // ── Cover band ──
+  fill(PRIMARY);
+  doc.rect(0, 0, W, 136, "F");
+  fill(ACCENT);
+  doc.rect(0, 136, W, 4, "F");
+  ink(WHITE);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("HIGHLIGHT", M, 42);
+  doc.setFontSize(22);
+  doc.text("AI Visibility & SEO Report", M, 72);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  const cleanUrl = siteUrl
+    ? siteUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "").slice(0, 58)
+    : "";
+  doc.text(`Site: ${cleanUrl || "—"}`, M, 92);
+  doc.text(`Niche: ${report.niche || "—"}`, M, 107);
+  doc.text(`Generated: ${report.generated_at ? toLocalDateTime(report.generated_at) : "—"}`, M, 122);
+  const bx = W - M - 116;
+  fill(WHITE);
+  doc.roundedRect(bx, 32, 116, 76, 10, 10, "F");
+  ink(PRIMARY);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(32);
+  doc.text(String(highlightScore), bx + 58, 76, { align: "center" });
+  ink(MUTE);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.text("HIGHLIGHT SCORE / 100", bx + 58, 96, { align: "center" });
+  y = 168;
 
-  lines.push(`## AI Visibility (GEO) — headline`);
-  lines.push("");
-  lines.push(`- **AI Share of Voice:** ${hasSov ? `${sov}%` : "not scanned"}`);
-  lines.push(`- **Cited in:** ${report.cited_count} of ${report.prompt_count} buyer prompts`);
-  lines.push(`- **Appears in sources for:** ${report.in_sources_count} prompt(s)`);
-  lines.push(`- **Engines scanned:** ${report.per_engine.map((e) => e.label).join(", ") || "—"}`);
-  lines.push("");
+  // ── Headline metric cards ──
+  const topCards: { label: string; value: string; color: RGB }[] = [
+    { label: "AI Share of Voice", value: hasSov ? `${sov}%` : "—", color: PRIMARY },
+    { label: "SEO Health", value: report.seo_health_score != null ? `${Math.round(seo)}/100` : "—", color: ACCENT },
+    { label: "Cited prompts", value: report.prompt_count ? `${report.cited_count}/${report.prompt_count}` : "0", color: SUCCESS },
+  ];
+  {
+    const gap = 10;
+    const cw = (CW - gap * 2) / 3;
+    const cardH = 58;
+    ensure(cardH + 8);
+    topCards.forEach((it, i) => {
+      const x = M + i * (cw + gap);
+      fill(SOFT);
+      doc.roundedRect(x, y, cw, cardH, 8, 8, "F");
+      fill(it.color);
+      doc.roundedRect(x, y, 4, cardH, 2, 2, "F");
+      ink(INK);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(20);
+      doc.text(it.value, x + 14, y + 30);
+      ink(MUTE);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(it.label.toUpperCase(), x + 14, y + 46);
+    });
+    y += cardH + 12;
+  }
 
-  if (report.per_engine.length > 0) {
-    lines.push(`### Per-engine citation breakdown`);
-    lines.push("");
-    lines.push(`| Engine | Cited responses | Citation rate | Share of voice |`);
-    lines.push(`| --- | --- | --- | --- |`);
+  // ── Per-engine citation bars ──
+  if (report.per_engine.length) {
+    sectionHeader("AI engines — citation rate");
     for (const e of report.per_engine) {
-      if (e.unavailable) {
-        lines.push(`| ${e.label} | unavailable | — | — |`);
-        continue;
-      }
+      ensure(24);
       const responses = e.responses ?? e.prompts;
-      const rate = e.cited_rate ?? (responses ? Math.round((e.cited / responses) * 100) : 0);
-      lines.push(`| ${e.label} | ${e.cited}/${responses} | ${rate}% | ${e.share_of_voice}% |`);
+      const rate = e.unavailable ? 0 : e.cited_rate ?? (responses ? Math.round((e.cited / responses) * 100) : 0);
+      ink(INK);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(e.label, M, y);
+      ink(MUTE);
+      doc.text(e.unavailable ? "unavailable" : `${rate}%  (cited ${e.cited}/${responses})`, W - M, y, { align: "right" });
+      y += 5;
+      fill(LINE);
+      doc.roundedRect(M, y, CW, 6, 3, 3, "F");
+      if (!e.unavailable && rate > 0) {
+        fill(PRIMARY);
+        doc.roundedRect(M, y, (CW * Math.min(rate, 100)) / 100, 6, 3, 3, "F");
+      }
+      y += 16;
     }
-    lines.push("");
   }
 
-  if (report.strengths.length > 0) {
-    lines.push(`## What's already working`);
-    lines.push("");
-    for (const s of report.strengths) lines.push(`- ${s}`);
-    lines.push("");
+  // ── Score progress chart ──
+  if (analytics && analytics.score_history && analytics.score_history.length) {
+    sectionHeader("Score progress over time");
+    lineChart(analytics.score_history);
   }
 
-  if (report.cited_prompts.length > 0) {
-    lines.push(`## Prompts you already win`);
-    lines.push("");
-    for (const p of report.cited_prompts) lines.push(`- ${p}`);
-    lines.push("");
+  // ── Analytics grid ──
+  if (analytics) {
+    sectionHeader("Analytics");
+    gridCards([
+      { label: "AI scans run", value: analytics.scans_run },
+      { label: "Content pieces", value: analytics.total_content_pieces },
+      { label: "Indexed chunks", value: analytics.indexed_chunks },
+      { label: "Keywords tracked", value: analytics.keywords_tracked },
+      { label: "Competitors found", value: analytics.competitors_found },
+      { label: "Backlink prospects", value: analytics.backlink_opportunities },
+      { label: "Google rankings", value: analytics.google_keywords_ranking },
+      { label: "Best Google rank", value: analytics.google_best_rank != null ? `#${analytics.google_best_rank}` : "—" },
+    ]);
   }
 
-  if (report.gap_prompts.length > 0) {
-    lines.push(`## Prompts you're not cited for (opportunities)`);
-    lines.push("");
-    for (const p of report.gap_prompts) lines.push(`- ${p}`);
-    lines.push("");
+  // ── Strengths ──
+  if (report.strengths.length) {
+    sectionHeader("What's already working");
+    report.strengths.forEach((s) => bullet(s, INK));
   }
-
-  if (report.action_plan.length > 0) {
-    lines.push(`## Prioritized action plan`);
-    lines.push("");
+  if (report.cited_prompts.length) {
+    sectionHeader("Prompts you already win");
+    report.cited_prompts.forEach((p) => bullet(p));
+  }
+  if (report.gap_prompts.length) {
+    sectionHeader("Opportunities — prompts you're not cited for");
+    report.gap_prompts.forEach((p) => bullet(p));
+  }
+  if (report.action_plan.length) {
+    sectionHeader("Prioritized action plan");
     for (const a of report.action_plan) {
-      lines.push(`${a.priority}. **[${a.category.toUpperCase()}] ${a.title}** — impact ${a.impact}, effort ${a.effort}`);
-      lines.push(`   ${a.detail}`);
+      ensure(28);
+      ink(INK);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text(`${a.priority}. [${a.category.toUpperCase()}] ${a.title}`, M, y);
+      ink(MUTE);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(`impact ${a.impact} · effort ${a.effort}`, W - M, y, { align: "right" });
+      y += 13;
+      para(a.detail, 9, MUTE, 4);
+      y += 3;
     }
-    lines.push("");
   }
 
-  lines.push(`## SEO foundation (secondary)`);
-  lines.push("");
-  lines.push(`- **SEO health:** ${report.seo_health_score ?? "—"}/100`);
-  lines.push(`- **Pages crawled:** ${report.pages_crawled}`);
-  lines.push(`- **Total issues:** ${report.total_issues}`);
+  // ── SEO foundation + severity bar ──
+  sectionHeader("SEO foundation");
+  bullet(`SEO health ${report.seo_health_score ?? "—"}/100 · ${report.pages_crawled} pages crawled · ${report.total_issues} issues`, INK);
   const sc = report.severity_counts || {};
-  lines.push(`- **By severity:** ${sc.critical ?? 0} critical · ${sc.warning ?? 0} warning · ${sc.info ?? 0} info`);
-  if (report.top_issues.length > 0) {
-    lines.push("");
-    lines.push(`### Top on-page issues`);
-    for (const i of report.top_issues) lines.push(`- ${humanIssue(i.issue_type)} — ${i.count}`);
-  }
-  lines.push("");
+  const crit = sc.critical ?? 0;
+  const warn = sc.warning ?? 0;
+  const info = sc.info ?? 0;
+  const tot = Math.max(crit + warn + info, 1);
+  ensure(22);
+  fill(LINE);
+  doc.roundedRect(M, y, CW, 8, 4, 4, "F");
+  let cx = M;
+  const seg = (cnt: number, c: RGB) => {
+    if (cnt > 0) {
+      const w = (CW * cnt) / tot;
+      fill(c);
+      doc.rect(cx, y, w, 8, "F");
+      cx += w;
+    }
+  };
+  seg(crit, DANGER);
+  seg(warn, WARN);
+  seg(info, MUTE);
+  y += 14;
+  para(`${crit} critical · ${warn} warning · ${info} info`, 8, MUTE);
+  for (const i of report.top_issues) bullet(`${humanIssue(i.issue_type)} — ${i.count}`);
 
-  if (report.competitors.length > 0) {
-    lines.push(`## Competitors winning AI citations`);
-    lines.push("");
-    for (const d of report.competitors) lines.push(`- ${d}`);
-    lines.push("");
+  // ── Competitors ──
+  if (report.competitors.length) {
+    sectionHeader("Competitors winning AI citations");
+    para(report.competitors.join("   ·   "), 9, MUTE);
   }
 
-  lines.push(`---`);
-  lines.push(`_Generated by Highlight — AI SEO & GEO toolkit._`);
-  return lines.join("\n");
+  // ── Footer on every page ──
+  const pages = doc.getNumberOfPages();
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p);
+    stroke(LINE);
+    doc.setLineWidth(0.5);
+    doc.line(M, H - 32, W - M, H - 32);
+    ink(MUTE);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text("Generated by Highlight — AI SEO & GEO toolkit", M, H - 20);
+    doc.text(`Page ${p} of ${pages}`, W - M, H - 20, { align: "right" });
+  }
+
+  return doc;
 }
 
 export default function ProjectAnalysisPage() {
@@ -212,30 +473,43 @@ export default function ProjectAnalysisPage() {
     try {
       const response = await api.post<AnalysisReport>(
         "/analysis/run",
-        { project_id: params.projectId, prompt_count: 3 },
+        { project_id: params.projectId, prompt_count: 5 },
         { timeout: 240000 },
       );
       setReport(response.data);
+      toast.success(
+        response.data.report_locked
+          ? "Analysis complete — upgrade to unlock the full report."
+          : "Full analysis complete.",
+      );
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to run the analysis.");
+      const msg = error instanceof Error ? error.message : "Failed to run the analysis.";
+      setErrorMessage(msg);
+      toast.error(msg);
     } finally {
       setIsRunning(false);
     }
   };
 
-  const downloadReport = () => {
+  const downloadReport = async () => {
     if (!report) return;
-    const md = buildReportMarkdown(report);
-    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
+    toast.info("Preparing your PDF report…");
+    let analytics: AnalyticsForPdf | null = null;
+    try {
+      analytics = (await api.get<AnalyticsForPdf>(`/analytics/${params.projectId}`)).data;
+    } catch {
+      // analytics is optional in the PDF
+    }
+    let siteUrl = "";
+    try {
+      siteUrl = (await api.get<{ url: string }>(`/projects/${params.projectId}`)).data.url ?? "";
+    } catch {
+      // url is optional in the PDF
+    }
+    const doc = buildReportPdf(report, analytics, siteUrl);
     const slug = (report.niche || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `ai-visibility-report-${slug}.md`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    doc.save(`ai-visibility-report-${slug}.pdf`);
+    toast.success("Report downloaded as PDF.");
   };
 
   const generateForPrompt = async (prompt: string) => {
@@ -260,9 +534,9 @@ export default function ProjectAnalysisPage() {
 
   return (
     <FeaturePageFrame
-      eyebrow="Full Analysis · GEO + SEO"
-      title="AI visibility command center"
-      description="Runs the whole pipeline in one go: scans every AI engine (ChatGPT, Perplexity, Gemini, Google AI Overview) to see who they cite, audits your site, and builds a prioritized plan to win more AI citations."
+      eyebrow="Full Analysis"
+      title="Full Analysis"
+      description="Runs everything in one go: checks which AI engines cite you, audits your site, and gives you a ranked action plan."
     >
       <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -270,8 +544,8 @@ export default function ProjectAnalysisPage() {
             <h2 className="text-lg font-semibold text-foreground">Run full analysis</h2>
             <p className="mt-2 text-sm text-muted-foreground">
               {hasReport && report.generated_at
-                ? `Last run ${new Date(report.generated_at).toLocaleString()}. Re-run after you publish changes.`
-                : "Multi-engine AI scan → site audit → niche → buyer prompts → action plan. Takes ~1–2 minutes."}
+                ? `Last run ${toLocalDateTime(report.generated_at)}. Re-run after you publish changes.`
+                : "Checks AI engines, audits your site, and builds an action plan. Takes about 1–2 minutes."}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -364,7 +638,7 @@ export default function ProjectAnalysisPage() {
               <div className="flex items-center gap-2">
                 <Lock className="h-5 w-5 text-primary" />
                 <h2 className="text-lg font-semibold text-foreground">
-                  Your initial AI-visibility test
+                  AI visibility test
                 </h2>
               </div>
               {report.summary ? (
@@ -411,7 +685,7 @@ export default function ProjectAnalysisPage() {
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
               <h2 className="text-lg font-semibold text-foreground">
-                Which AI engines cite you — and how often
+                Which engines cite you
               </h2>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -493,7 +767,7 @@ export default function ProjectAnalysisPage() {
             <section className="rounded-[1.5rem] border border-success/30 bg-success/5 p-6 shadow-sm">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="h-5 w-5 text-success" />
-                <h2 className="text-lg font-semibold text-foreground">What&apos;s already working well</h2>
+                <h2 className="text-lg font-semibold text-foreground">What&apos;s working</h2>
               </div>
               {report.strengths.length > 0 ? (
                 <ul className="mt-4 grid gap-2">
@@ -530,7 +804,7 @@ export default function ProjectAnalysisPage() {
             <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-primary" />
-                <h2 className="text-lg font-semibold text-foreground">Your prioritized action plan</h2>
+                <h2 className="text-lg font-semibold text-foreground">Action plan</h2>
               </div>
               <div className="mt-5 grid gap-3">
                 {report.action_plan.map((action) => (
@@ -571,7 +845,7 @@ export default function ProjectAnalysisPage() {
               <div className="flex items-center gap-2">
                 <Target className="h-5 w-5 text-destructive" />
                 <h2 className="text-lg font-semibold text-foreground">
-                  Prompts you&apos;re not cited for — generate content to win them
+                  Prompts you&apos;re missing
                 </h2>
               </div>
               <div className="mt-5 grid gap-3">
@@ -612,7 +886,7 @@ export default function ProjectAnalysisPage() {
 
           {report.competitors.length > 0 ? (
             <section className="rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-foreground">Competitors winning AI citations</h2>
+              <h2 className="text-lg font-semibold text-foreground">Competitors cited by AI</h2>
               <div className="mt-4 flex flex-wrap gap-2">
                 {report.competitors.map((domain) => (
                   <span

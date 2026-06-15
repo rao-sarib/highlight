@@ -8,21 +8,13 @@ import { AutoModePanel } from "@/components/global/auto-mode-panel";
 import { FeaturePageFrame } from "@/components/global/feature-page-frame";
 import api from "@/lib/api";
 import { useProjectContext } from "@/lib/useProjectContext";
+import { toast } from "@/store/toastStore";
 
 type ContentType = "blog" | "faq" | "meta" | "geo";
 
 interface PromptOptimizationResponse {
   keyword: string;
   prompts: string[];
-}
-
-interface WorkflowResponse {
-  workflow_id: string;
-  run_id: string;
-  project_id: string;
-  topic: string;
-  content_type: ContentType;
-  status: string;
 }
 
 interface ContentItem {
@@ -41,9 +33,9 @@ export default function ProjectContentGenerationPage() {
   const [topic, setTopic] = useState("");
   const [contentType, setContentType] = useState<ContentType>("blog");
   const [optimizedPrompts, setOptimizedPrompts] = useState<string[]>([]);
-  const [workflowResult, setWorkflowResult] = useState<WorkflowResponse | null>(null);
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [isLoadingContent, setIsLoadingContent] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -81,22 +73,44 @@ export default function ProjectContentGenerationPage() {
     }
   }, [params.projectId]);
 
+  const pollForContent = async (beforeCount: number) => {
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      try {
+        const res = await api.get<ContentItem[]>(`/content/project/${params.projectId}`);
+        if (res.data.length > beforeCount) {
+          setContentItems(res.data);
+          setIsGenerating(false);
+          toast.success("Your content is ready — see it below.");
+          return;
+        }
+      } catch {
+        // keep polling
+      }
+    }
+    setIsGenerating(false);
+    toast.info("Still generating — it'll appear here shortly. Try Refresh in a moment.");
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setErrorMessage("");
     setIsSubmitting(true);
+    const beforeCount = contentItems.length;
 
     try {
-      const response = await api.post<WorkflowResponse>("/content/generate", {
+      await api.post("/content/generate", {
         project_id: params.projectId,
         topic: topic.trim() || null,
         content_type: contentType,
       });
-      setWorkflowResult(response.data);
+      toast.info("Content generation started — writing your content now…");
+      setIsGenerating(true);
+      void pollForContent(beforeCount);
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Failed to trigger content generation.",
-      );
+      const msg = error instanceof Error ? error.message : "Failed to start content generation.";
+      setErrorMessage(msg);
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -106,8 +120,8 @@ export default function ProjectContentGenerationPage() {
     <FeaturePageFrame
       feature="content"
       eyebrow="Content Generation"
-      title="Launch the Temporal content workflow"
-      description="Send a topic and content type to the backend workflow, then review the generated content already saved for this project. The GEO type produces AI-citable sections (direct answer, key facts, FAQ, schema) designed to win citations in AI engines."
+      title="Generate content"
+      description="Pick a topic and content type, and we'll generate it for you. GEO content includes a direct answer, key facts, an FAQ, and schema to help win AI citations."
     >
       <section className="space-y-4 rounded-[1.5rem] border border-border/70 bg-card p-6 shadow-sm">
         <AutoModePanel
@@ -173,12 +187,15 @@ export default function ProjectContentGenerationPage() {
           </button>
         </form>
 
-        {workflowResult ? (
-          <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/10 p-4">
-            <p className="text-sm font-semibold text-foreground">Workflow started</p>
-            <div className="mt-3 grid gap-3 text-sm text-muted-foreground md:grid-cols-2">
-              <p>Workflow ID: {workflowResult.workflow_id}</p>
-              <p>Run ID: {workflowResult.run_id}</p>
+        {isGenerating ? (
+          <div className="mt-5 flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/10 p-4">
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-primary" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Generating your content…</p>
+              <p className="text-xs text-muted-foreground">
+                This usually takes ~20–60 seconds. It&apos;ll appear below automatically — no need to
+                refresh.
+              </p>
             </div>
           </div>
         ) : null}

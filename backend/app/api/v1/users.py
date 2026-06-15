@@ -10,9 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from app.api.dependencies import get_current_user, verify_admin
+from app.core.security import hash_password, verify_password
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.user_schema import UserRead, UserRoleUpdate
+from app.schemas.user_schema import PasswordChange, UserRead, UserRoleUpdate, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -28,6 +29,45 @@ def read_current_user(
 ) -> UserRead:
     """Return the profile of the currently authenticated user."""
     return UserRead.model_validate(current_user)
+
+
+# ── Update own profile (name) ────────────────────────────
+@router.patch(
+    "/me",
+    response_model=UserRead,
+    summary="Update your own profile (name)",
+)
+def update_current_user(
+    body: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> UserRead:
+    current_user.full_name = body.full_name.strip()
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return UserRead.model_validate(current_user)
+
+
+# ── Change own password ──────────────────────────────────
+@router.post(
+    "/me/password",
+    summary="Change your own password",
+)
+def change_password(
+    body: PasswordChange,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    if not verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect.",
+        )
+    current_user.hashed_password = hash_password(body.new_password)
+    db.add(current_user)
+    db.commit()
+    return {"status": "updated"}
 
 
 # ── List all users (Admin) ───────────────────────────────

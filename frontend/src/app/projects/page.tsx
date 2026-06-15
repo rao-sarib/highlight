@@ -34,8 +34,8 @@ export default function ProjectsPage() {
   return (
     <FeaturePageFrame
       eyebrow="Projects"
-      title="Manage your SEO workspaces"
-      description="Each project becomes the anchor for audits, AI content generation, visibility scoring, and semantic analysis."
+      title="Your projects"
+      description="Each project is a site you audit, optimize, and track."
       aside={
         <Link
           href="/projects/new"
@@ -75,7 +75,7 @@ export default function ProjectsPage() {
           {projects.map((project) => (
             <Link
               key={project.id}
-              href={`/projects/${project.id}`}
+              href={`/projects/${project.id}/analysis`}
               onClick={() => setActiveProjectId(project.id)}
               className="group rounded-[1.5rem] border border-border/70 bg-card p-6 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-glow"
             >

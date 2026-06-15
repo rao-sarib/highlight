@@ -32,6 +32,7 @@ from app.services.geo_service import GeoServiceError, geo_service
 from app.services.llm_service import llm_service
 from app.services.project_context import resolve_keyword
 from app.services.quota_service import consume_scan
+from app.services.score_service import record_score
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,8 @@ class VisibilityRequest(BaseModel):
     project_id: uuid.UUID
     # Optional: when omitted, the project's detected niche/keyword is used.
     keyword: str | None = Field(default=None, max_length=255)
-    prompt_count: int = Field(default=4, ge=2, le=6)
+    # At least 5 buyer prompts per engine for a meaningful brand-visibility read.
+    prompt_count: int = Field(default=5, ge=3, le=10)
     force_refresh: bool = False
 
 
@@ -239,6 +241,9 @@ async def calculate_visibility_score(
 
     db.commit()
     db.refresh(scan)
+
+    # Progress snapshot for the Analytics history graph.
+    record_score(db, body.project_id, ai_visibility=scan_result.share_of_voice)
 
     return _scan_to_response(scan, body.project_id, cached=False)
 

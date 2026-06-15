@@ -1,8 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Sora } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "./globals.css";
+import NextTopLoader from "nextjs-toploader";
+import Toaster from "@/components/global/Toaster";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -35,6 +37,15 @@ export const metadata: Metadata = {
     "AI share of voice",
   ],
   authors: [{ name: "Highlight" }],
+  applicationName: "Highlight",
+  category: "technology",
+  alternates: { canonical: "/" },
+  formatDetection: { telephone: false, email: false, address: false },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
+  },
   openGraph: {
     type: "website",
     siteName: "Highlight",
@@ -49,6 +60,10 @@ export const metadata: Metadata = {
     description:
       "See whether AI engines cite your brand, then generate the content that wins those citations.",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#6F55EE",
 };
 
 // Applied before paint to avoid a flash of the wrong theme.
@@ -81,7 +96,9 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${inter.variable} ${sora.variable} min-h-screen bg-background font-sans text-foreground antialiased`}
       >
+        <NextTopLoader color="#6F55EE" height={3} showSpinner={false} shadow="0 0 10px #1BC8E8" />
         {children}
+        <Toaster />
       </body>
     </html>
   );

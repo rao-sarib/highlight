@@ -78,7 +78,7 @@ def _get_owned_project_or_404(
     return project
 
 
-@router.get("/", response_model=list[ProjectRead], summary="List current user's projects")
+@router.get("", response_model=list[ProjectRead], summary="List current user's projects")
 def list_projects(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -92,7 +92,7 @@ def list_projects(
 
 
 @router.post(
-    "/",
+    "",
     response_model=ProjectRead,
     status_code=status.HTTP_201_CREATED,
     summary="Create a project",

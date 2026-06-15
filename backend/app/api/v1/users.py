@@ -72,7 +72,7 @@ def change_password(
 
 # ── List all users (Admin) ───────────────────────────────
 @router.get(
-    "/",
+    "",
     response_model=list[UserRead],
     summary="List all users (Admin only)",
 )

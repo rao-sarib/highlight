@@ -17,8 +17,9 @@ dev fallback so the flow stays usable before email is set up.
 from __future__ import annotations
 
 from datetime import timedelta
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import JWTError
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
@@ -73,12 +74,30 @@ class ResetPasswordRequest(BaseModel):
 
 
 # ── Email helpers ─────────────────────────────────────────
-def _verify_link(token: str) -> str:
-    return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/verify-email?token={token}"
+def _frontend_base(request: Request) -> str:
+    """Base URL for email links — the site the user is actually on (so links work
+    on Vercel, Netlify, or local), falling back to FRONTEND_BASE_URL, then local.
+    Avoids producing a relative link when FRONTEND_BASE_URL isn't configured."""
+    origin = (request.headers.get("origin") or "").strip()
+    if origin.startswith(("http://", "https://")):
+        return origin.rstrip("/")
+    referer = (request.headers.get("referer") or "").strip()
+    if referer.startswith(("http://", "https://")):
+        parsed = urlparse(referer)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}"
+    configured = (settings.FRONTEND_BASE_URL or "").strip()
+    if configured.startswith(("http://", "https://")):
+        return configured.rstrip("/")
+    return "http://localhost:3000"
 
 
-def _reset_link(token: str) -> str:
-    return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/reset-password?token={token}"
+def _verify_link(base: str, token: str) -> str:
+    return f"{base}/verify-email?token={token}"
+
+
+def _reset_link(base: str, token: str) -> str:
+    return f"{base}/reset-password?token={token}"
 
 
 def _deliver(
@@ -127,7 +146,7 @@ def _reset_email_body(name: str, link: str) -> str:
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user (sends a verification email)",
 )
-def signup(body: UserCreate, db: Session = Depends(get_db)) -> SignupResponse:
+def signup(body: UserCreate, request: Request, db: Session = Depends(get_db)) -> SignupResponse:
     """Create an unverified account and email a verification link."""
     existing = db.exec(select(User).where(User.email == body.email)).first()
     if existing:
@@ -153,7 +172,7 @@ def signup(body: UserCreate, db: Session = Depends(get_db)) -> SignupResponse:
     db.refresh(user)
 
     token = create_purpose_token(str(user.id), PURPOSE_VERIFY, VERIFY_TOKEN_TTL)
-    link = _verify_link(token)
+    link = _verify_link(_frontend_base(request), token)
     emailed, dev_url = _deliver(
         db,
         to_email=user.email,
@@ -217,13 +236,15 @@ def verify_email(body: TokenRequest, db: Session = Depends(get_db)) -> Token:
     response_model=MessageResponse,
     summary="Re-send the verification email",
 )
-def resend_verification(body: EmailRequest, db: Session = Depends(get_db)) -> MessageResponse:
+def resend_verification(
+    body: EmailRequest, request: Request, db: Session = Depends(get_db)
+) -> MessageResponse:
     user = db.exec(select(User).where(User.email == body.email)).first()
     generic = "If that account exists and isn't verified yet, a new verification link has been sent."
     if user is None or user.is_verified:
         return MessageResponse(message=generic)
     token = create_purpose_token(str(user.id), PURPOSE_VERIFY, VERIFY_TOKEN_TTL)
-    link = _verify_link(token)
+    link = _verify_link(_frontend_base(request), token)
     emailed, dev_url = _deliver(
         db,
         to_email=user.email,
@@ -240,13 +261,15 @@ def resend_verification(body: EmailRequest, db: Session = Depends(get_db)) -> Me
     response_model=MessageResponse,
     summary="Email a password-reset link",
 )
-def forgot_password(body: EmailRequest, db: Session = Depends(get_db)) -> MessageResponse:
+def forgot_password(
+    body: EmailRequest, request: Request, db: Session = Depends(get_db)
+) -> MessageResponse:
     user = db.exec(select(User).where(User.email == body.email)).first()
     generic = "If an account exists for that email, a password-reset link has been sent."
     if user is None:
         return MessageResponse(message=generic)
     token = create_purpose_token(str(user.id), PURPOSE_RESET, RESET_TOKEN_TTL)
-    link = _reset_link(token)
+    link = _reset_link(_frontend_base(request), token)
     emailed, dev_url = _deliver(
         db,
         to_email=user.email,

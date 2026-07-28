@@ -1,0 +1,3 @@
+{
+  "note": "Put reusable test data (fixtures) here. Load with cy.fixture('example')."
+}

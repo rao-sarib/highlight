@@ -16,24 +16,28 @@ from app.models.admin import Admin
 from app.models.user import User, UserRole
 from app.services.rbac_service import assert_role_allows
 
-# Extracts the Bearer token from the Authorization header.
-_bearer_scheme = HTTPBearer()
+# Extracts the Bearer token from the Authorization header. auto_error=False so a
+# MISSING token returns 401 (handled below) instead of HTTPBearer's default 403 —
+# the frontend treats 401 as "log in again" and redirects to /login.
+_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
     """Decode the JWT and return the corresponding User row.
 
-    Raises 401 if the token is invalid, expired, or the user no longer exists.
+    Raises 401 if the token is missing, invalid, expired, or the user is gone.
     """
-    token = credentials.credentials
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if credentials is None:
+        raise credentials_exception
+    token = credentials.credentials
 
     try:
         payload = decode_access_token(token)
@@ -78,16 +82,18 @@ def require_feature(feature: str):
 
 
 def get_current_admin(
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     db: Session = Depends(get_db),
 ) -> Admin:
     """Decode an admin-panel JWT (scope=admin) and return the Admin row."""
-    token = credentials.credentials
     admin_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate admin credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if credentials is None:
+        raise admin_exception
+    token = credentials.credentials
     try:
         payload = decode_access_token(token)
         if payload.get("scope") != "admin":

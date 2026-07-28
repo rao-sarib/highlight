@@ -20,8 +20,8 @@ services:
     container_name: highlight_db
     restart: always
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
       POSTGRES_DB: highlight_seo
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -40,8 +40,8 @@ services:
     environment:
       DB: postgres12
       DB_PORT: 5432
-      POSTGRES_USER: admin
-      POSTGRES_PWD: password
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:-password}
       POSTGRES_SEEDS: db
       DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/config/dynamicconfig/docker.yaml
 
@@ -64,7 +64,7 @@ services:
     volumes:
       - ./backend:/app
     environment:
-      DATABASE_URL: postgresql://admin:password@db:5432/highlight_seo
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password}@db:5432/highlight_seo
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-super-secret-change-me-in-production}
       ALGORITHM: HS256
@@ -97,7 +97,7 @@ services:
     volumes:
       - ./backend:/app
     environment:
-      DATABASE_URL: postgresql://admin:password@db:5432/highlight_seo
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password}@db:5432/highlight_seo
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-super-secret-change-me-in-production}
       ALGORITHM: HS256

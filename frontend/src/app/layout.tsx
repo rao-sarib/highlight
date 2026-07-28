@@ -89,13 +89,14 @@ export default function RootLayout({
 }>) {
   return (
     <html className="h-full" lang="en" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-      </head>
       <body
         suppressHydrationWarning
         className={`${inter.variable} ${sora.variable} min-h-screen bg-background font-sans text-foreground antialiased`}
       >
+        {/* Pre-paint theme/JS init. Kept in <body> (not a manual <head>) because
+            Next App Router hoists head tags during SSR, which caused a hydration
+            mismatch. As the first body child it still runs before content paints. */}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <NextTopLoader color="#6F55EE" height={3} showSpinner={false} shadow="0 0 10px #1BC8E8" />
         {children}
         <Toaster />

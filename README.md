@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="./NOTICE.md"><img alt="All Rights Reserved" src="https://img.shields.io/badge/license-All%20Rights%20Reserved-lightgrey.svg"></a>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-black?logo=next.js">
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white">
@@ -164,7 +164,7 @@ docker compose down           # stop, keep data
 docker compose down -v        # stop and wipe all data
 ```
 
-Two additional Compose files support production deployment: `docker-compose.prod.yml` (all-in-one, single server with a reverse proxy) and `docker-compose.ec2.yml` (backend-only, for a split frontend/backend deployment). See [`DEPLOY.md`](DEPLOY.md) for a full walkthrough.
+Two additional Compose files support production deployment: `docker-compose.prod.yml` (all-in-one, single server with a reverse proxy) and `docker-compose.ec2.yml` (backend-only, for a split frontend/backend deployment).
 
 ### 3. Run frontend and backend individually (optional, for local development)
 
@@ -204,16 +204,11 @@ Sign up with any email to explore — AI features run against live APIs, so resu
 
 ## Contributing
 
-Contributions, issues, and feature requests are welcome.
-
-1. Fork the repo and create a branch: `git checkout -b feature/your-feature`
-2. Make your changes
-3. Ensure `npm run lint` (frontend) passes
-4. Open a Pull Request describing the change and why
+This is a personal portfolio project and isn't currently open to external contributions. If you spot a bug, feel free to open an issue.
 
 ## License
 
-Distributed under the **MIT License** — see [`LICENSE`](LICENSE) for the full text.
+This repository is source-available for portfolio and recruitment evaluation purposes only — it is **not** open source. All rights are reserved; no permission is granted to copy, modify, distribute, or reuse this code without prior written permission. See [`NOTICE.md`](NOTICE.md) for the full notice.
 
 ## Author
 

@@ -13,6 +13,8 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from app.core.url_guard import UnsafeUrlError, safe_get
+
 logger = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT_SECONDS = 30.0
@@ -122,15 +124,21 @@ class ScraperService:
         page = ScrapedPage(url=normalized_url, status_code=0)
 
         try:
+            # follow_redirects=False: safe_get walks the redirect chain itself so
+            # every hop is re-checked against the SSRF guard.
             async with httpx.AsyncClient(
-                follow_redirects=True,
+                follow_redirects=False,
                 timeout=self.timeout,
                 headers={"User-Agent": self.user_agent},
             ) as client:
-                response = await client.get(normalized_url)
+                response = await safe_get(client, normalized_url)
             page.status_code = response.status_code
             page.url = str(response.url)
             page.raw_html = response.text
+        except UnsafeUrlError as exc:
+            logger.warning("Refused to scrape %s: %s", normalized_url, exc)
+            page.error = str(exc)
+            return page
         except httpx.HTTPError as exc:
             logger.exception("Failed to scrape %s", normalized_url)
             page.error = str(exc)

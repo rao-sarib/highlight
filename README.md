@@ -104,6 +104,7 @@ More screens — registration, backlinks, outreach email generation, content ref
 | Payments | Stripe |
 | Cache / Queue | Redis |
 | Containerisation | Docker + Docker Compose |
+| Testing / CI | pytest · Cypress · GitHub Actions |
 | Hosting (live) | Frontend on Vercel · Backend + Postgres + Temporal on AWS EC2 |
 
 ## Architecture Overview
@@ -128,6 +129,10 @@ flowchart TD
 ```
 
 The browser only ever talks to the Next.js frontend, which proxies API requests to the FastAPI backend. The backend reads/writes PostgreSQL directly, uses Redis for caching, and hands off long-running or scheduled work (audits, content generation, refresh cycles) to Temporal background workers — which also call OpenAI and write their results back to PostgreSQL. In production, the frontend is deployed on Vercel and the backend/database/workers run together on a single AWS EC2 host via Docker Compose.
+
+**Database schema** is managed by SQLModel's `create_all()` plus a small set of idempotent `ALTER TABLE ... IF NOT EXISTS` statements in the startup lifespan (`backend/app/main.py`), rather than a migration tool. This keeps deployment to a single `git pull` + restart with no migration step, at the cost of no down-migrations or version history — a deliberate trade-off for a project of this size. Alembic would be the natural next step if the schema churned across multiple environments.
+
+**Outbound fetches are SSRF-guarded**: the crawler and scraper accept user-supplied URLs, so every fetch resolves the hostname and rejects loopback, link-local (including cloud metadata endpoints), and private ranges, re-validating on each redirect hop (`backend/app/core/url_guard.py`).
 
 ## Installation
 
@@ -194,8 +199,9 @@ Sign up with any email to explore — AI features run against live APIs, so resu
 
 ## Future Roadmap
 
-- [ ] Automated backend test suite
-- [ ] CI pipeline (lint, build, test on every pull request)
+- [x] Automated backend test suite (pytest)
+- [x] CI pipeline (lint, build, test on every pull request)
+- [ ] Expand test coverage to the crawler and GEO scanning services
 - [ ] Self-serve Google Analytics 4 connection (currently requires manual setup)
 - [ ] Production-ready Stripe billing (currently test-mode)
 - [ ] Custom domain + HTTPS for the backend API

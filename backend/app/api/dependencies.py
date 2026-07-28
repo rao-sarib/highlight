@@ -47,7 +47,15 @@ def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    user = db.exec(select(User).where(User.id == user_id)).first()
+    # The `sub` claim is a string; the column is a UUID. Convert explicitly so a
+    # token carrying a non-UUID subject is a clean 401 rather than a database
+    # error (matches how get_current_admin handles its own subject).
+    try:
+        user_uuid = uuid.UUID(str(user_id))
+    except (ValueError, TypeError):
+        raise credentials_exception
+
+    user = db.exec(select(User).where(User.id == user_uuid)).first()
     if user is None:
         raise credentials_exception
     return user

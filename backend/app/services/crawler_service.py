@@ -22,6 +22,7 @@ from urllib.parse import urldefrag, urljoin, urlparse
 
 import httpx
 
+from app.core.url_guard import UnsafeUrlError, assert_public_url, safe_get
 from app.services.scraper_service import ScrapedPage, scraper_service
 
 logger = logging.getLogger(__name__)
@@ -64,8 +65,9 @@ class CrawlerService:
         seen: set[str] = set()
 
         try:
+            # follow_redirects=False: safe_get re-checks every redirect hop.
             async with httpx.AsyncClient(
-                follow_redirects=True,
+                follow_redirects=False,
                 timeout=SITEMAP_TIMEOUT,
                 headers={"User-Agent": scraper_service.user_agent},
             ) as client:
@@ -78,11 +80,14 @@ class CrawlerService:
                         continue
                     checked.add(sm_url)
                     try:
-                        resp = await client.get(sm_url)
+                        resp = await safe_get(client, sm_url)
                         if resp.status_code >= 400 or "xml" not in resp.headers.get(
                             "content-type", "xml"
                         ):
                             continue
+                    except UnsafeUrlError as exc:
+                        logger.warning("Skipping unsafe sitemap URL %s: %s", sm_url, exc)
+                        continue
                     except httpx.HTTPError:
                         continue
 

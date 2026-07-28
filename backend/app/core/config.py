@@ -50,9 +50,11 @@ class Settings(BaseSettings):
 
     # ── Admin panel (separate /adminpanel login) ─────────────────────────
     # Seeded into the admins table on first startup if no admin exists.
-    # Change the password after first login (or set these before first run).
+    # ADMIN_PASSWORD has no default on purpose: a hardcoded fallback would be
+    # published in this repo and usable against any deployment that never set
+    # it. Startup fails with a clear error if it's needed but missing.
     ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = "highlight-admin"
+    ADMIN_PASSWORD: str = ""
 
     # ── Stripe (payments) ────────────────────────────────────────────────
     # Secret key (sk_test_… for the demo) — enables hosted Checkout.
@@ -63,6 +65,38 @@ class Settings(BaseSettings):
     STRIPE_PUBLISHABLE_KEY: str = ""
     # Where Stripe redirects back after checkout. Points at the frontend.
     FRONTEND_BASE_URL: str = "http://localhost:3000"
+
+    # ── CORS ─────────────────────────────────────────────────────────────
+    # Comma-separated browser origins allowed to call the API with credentials,
+    # e.g. "https://highlight-teal.vercel.app,https://app.example.com".
+    # An explicit list rather than a wildcard pattern: matching every
+    # *.vercel.app / *.netlify.app would trust deployments owned by anyone.
+    FRONTEND_ORIGINS: str = ""
+
+    @property
+    def cors_allow_origins(self) -> list[str]:
+        """Local dev origins + FRONTEND_BASE_URL + any configured extras."""
+        origins = [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
+        ]
+        # The Stripe return URL is the deployed frontend, so it belongs here too.
+        if self.FRONTEND_BASE_URL.strip():
+            origins.append(self.FRONTEND_BASE_URL.strip())
+        origins.extend(
+            candidate
+            for raw in self.FRONTEND_ORIGINS.split(",")
+            if (candidate := raw.strip())
+        )
+
+        unique: list[str] = []
+        for origin in origins:
+            normalized = origin.rstrip("/")
+            if normalized and normalized not in unique:
+                unique.append(normalized)
+        return unique
 
     model_config = SettingsConfigDict(
         env_file=".env",

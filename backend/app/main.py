@@ -17,6 +17,7 @@ from sqlmodel import SQLModel, text
 
 logger = logging.getLogger("app.main")
 
+from app.core.config import settings
 from app.db.session import engine
 
 # ── Import models so SQLModel.metadata picks them up ─────
@@ -129,12 +130,21 @@ def _seed_initial_data() -> None:
     from app.services.rbac_service import seed_role_permissions
 
     with Session(engine) as session:
-        # Default admin (only if none exists yet).
+        # Default admin (only if none exists yet). Deliberately checked here
+        # rather than at import time: a deployment that already seeded its admin
+        # keeps starting fine without ADMIN_PASSWORD in the environment.
         if session.exec(select(AdminModel)).first() is None:
+            admin_password = settings.ADMIN_PASSWORD.strip()
+            if not admin_password:
+                raise RuntimeError(
+                    "ADMIN_PASSWORD is not set. It is required to create the initial "
+                    "admin account for /adminpanel. Set a strong ADMIN_PASSWORD in the "
+                    "environment (see .env.example) and start the server again."
+                )
             session.add(
                 AdminModel(
                     username=settings.ADMIN_USERNAME.strip() or "admin",
-                    hashed_password=hash_password(settings.ADMIN_PASSWORD or "highlight-admin"),
+                    hashed_password=hash_password(admin_password),
                 )
             )
             session.commit()
@@ -167,15 +177,12 @@ app = FastAPI(
 )
 
 # ── CORS ─────────────────────────────────────────────────
+# Explicit origin allowlist (see Settings.cors_allow_origins). Deployed
+# frontends are added via FRONTEND_ORIGINS; there is deliberately no wildcard
+# pattern, which would have trusted every *.vercel.app / *.netlify.app site.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-    ],
-    allow_origin_regex=r"https://.*\.(netlify|vercel)\.app",
+    allow_origins=settings.cors_allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

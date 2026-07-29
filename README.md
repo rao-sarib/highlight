@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/rao-sarib/HIGHLIGHT/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/rao-sarib/HIGHLIGHT/actions/workflows/ci.yml/badge.svg"></a>
   <a href="./NOTICE.md"><img alt="All Rights Reserved" src="https://img.shields.io/badge/license-All%20Rights%20Reserved-lightgrey.svg"></a>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-black?logo=next.js">
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi">

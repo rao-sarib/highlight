@@ -12,7 +12,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://admin:password@localhost:5432/highlight_seo"
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    SECRET_KEY: str = "super-secret-change-me-in-production"
+    # No default on purpose: any value shipped here would be public in this
+    # repository, and a known JWT signing key lets anyone forge a token for any
+    # account. Startup fails with instructions if it's unset (see app/main.py).
+    SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"
     # 7 days — long-lived sessions so users don't get "could not validate
     # credentials" mid-session (the frontend also logs out + redirects on 401).

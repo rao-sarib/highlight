@@ -60,6 +60,16 @@ from app.api.v1.site import router as site_router
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Run one-time setup on startup, then yield control to the app."""
+    # Refuse to run without a signing key rather than fall back to a shared
+    # default: a known SECRET_KEY lets anyone mint a valid token for any user.
+    if not settings.SECRET_KEY.strip():
+        raise RuntimeError(
+            "SECRET_KEY is not set. It signs every session token, so the app "
+            "will not start without one. Generate a value and put it in your "
+            'environment (see .env.example):\n\n'
+            '    python -c "import secrets; print(secrets.token_urlsafe(64))"\n'
+        )
+
     # Enable pgvector extension (no-op if it already exists). Must run before
     # create_all() since the embeddings table has a vector-typed column.
     with engine.begin() as conn:

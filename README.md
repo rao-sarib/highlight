@@ -194,9 +194,9 @@ npm run dev
 
 **🔗 https://highlight-teal.vercel.app**
 
-Sign up with any email to explore — AI features run against live APIs, so results are real, not seeded or mocked data.
+Sign up with any email to explore. AI features call the live OpenAI, Perplexity, Serper, and Gemini APIs, so every score and generated page is real output — nothing is seeded or mocked.
 
-> The backend may be paused between demos to control hosting cost — if it appears unreachable, it may need to be restarted.
+> Running on a small cloud instance, so the first request after a quiet period can take a few seconds.
 
 ## Future Roadmap
 

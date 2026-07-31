@@ -13,6 +13,13 @@ DDL migrations, admin seeding) against a real database.
 
 from __future__ import annotations
 
+import os
+
+# SECRET_KEY has no default in Settings (a shared one would be public), so the
+# suite supplies its own before app.core.config is first imported. setdefault so
+# a real environment value still wins.
+os.environ.setdefault("SECRET_KEY", "test-only-key-not-used-outside-the-test-suite")
+
 import uuid
 
 import pytest

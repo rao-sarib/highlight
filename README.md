@@ -40,7 +40,7 @@
 - [Future Roadmap](#future-roadmap)
 - [Contributing](#contributing)
 - [License](#license)
-- [Author](#author)
+- [Team](#team)
 
 ---
 
@@ -200,9 +200,9 @@ Sign up with any email to explore. AI features call the live OpenAI, Perplexity,
 
 ## Future Roadmap
 
-- [x] Automated backend test suite (pytest)
+- [x] Automated tests for core auth, access-control, and SSRF paths (pytest)
 - [x] CI pipeline (lint, build, test on every pull request)
-- [ ] Expand test coverage to the crawler and GEO scanning services
+- [ ] Extend test coverage to the crawler, GEO scanning, and content services
 - [ ] Self-serve Google Analytics 4 connection (currently requires manual setup)
 - [ ] Production-ready Stripe billing (currently test-mode)
 - [ ] Custom domain + HTTPS for the backend API
@@ -217,9 +217,19 @@ This is a personal portfolio project and isn't currently open to external contri
 
 This repository is source-available for portfolio and recruitment evaluation purposes only — it is **not** open source. All rights are reserved; no permission is granted to copy, modify, distribute, or reuse this code without prior written permission. See [`NOTICE.md`](NOTICE.md) for the full notice.
 
-## Author
+## Team
 
-**Mohammad Sarib Ali**
-[GitHub @rao-sarib](https://github.com/rao-sarib)
+Built as a Final Year Project at HiTec University, Lahore, by a team of three.
 
-Originally developed together with Eman Ali and Hamna Imran.
+| Contributor | Contribution |
+|---|---|
+| **Mohammad Sarib Ali** ([@rao-sarib](https://github.com/rao-sarib)) | Project lead — frontend (Next.js / React), database design, system integration, and deployment |
+| **Eman Ali** | Backend — Python / FastAPI APIs and services |
+| **Hamna Imran** | Reports and project documentation |
+
+Documentation was a shared effort across the team.
+
+> **On the commit history:** this repository was published from a single account
+> after the project was complete, so `git log` reflects the publishing account
+> rather than per-person authorship. The table above is the accurate split of
+> work.
